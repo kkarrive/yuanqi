@@ -113,6 +113,37 @@ class FeishuClient:
             raise FeishuError(f"unexpected record shape: {body['data']['record']}")
         return dict(fields)
 
+    async def list_pending(self, status_field: str, status_value: str) -> list[dict]:
+        """查出所有状态等于 status_value 的记录，供轮询 worker 使用。"""
+        payload = {
+            "filter": {
+                "conjunction": "and",
+                "conditions": [
+                    {
+                        "field_name": status_field,
+                        "operator": "is",
+                        "value": [status_value],
+                    }
+                ],
+            },
+            "page_size": 20,
+        }
+        resp = await self._client.post(
+            f"/bitable/v1/apps/{self._app_token}/tables/{self._table_id}/records/search",
+            headers=await self._headers(),
+            json=payload,
+        )
+        body = resp.json()
+        if body.get("code") != 0:
+            raise FeishuError(f"search records failed: {body}")
+        items = body["data"].get("items") or []
+        out: list[dict] = []
+        for item in items:
+            fields = item.get("fields")
+            if isinstance(fields, dict):
+                out.append({"record_id": str(item.get("record_id", "")), "fields": dict(fields)})
+        return out
+
     async def update_record(self, record_id: str, fields: dict) -> None:
         resp = await self._client.put(
             f"/bitable/v1/apps/{self._app_token}/tables/{self._table_id}/records/{record_id}",

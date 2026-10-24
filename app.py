@@ -63,6 +63,10 @@ S_FAILED = os.getenv("STATUS_FAILED", "失败")
 MAX_CANDIDATES = int(os.getenv("MAX_CANDIDATES", "1"))
 DEDUP_TTL_S = float(os.getenv("DEDUP_TTL_S", "3600"))
 
+# 轮询模式：不依赖飞书自动化，服务主动扫「待处理」记录
+POLL_ENABLED = os.getenv("POLL_ENABLED", "true").lower() not in {"0", "false", "no"}
+POLL_INTERVAL_S = float(os.getenv("POLL_INTERVAL_S", "10"))
+
 
 # ---------- 数据结构 ----------
 @dataclass
@@ -201,6 +205,46 @@ async def worker() -> None:
             queue.task_done()
 
 
+async def poller() -> None:
+    """轮询多维表格里「待处理」的记录，免掉飞书自动化配置。"""
+    if not POLL_ENABLED:
+        log.info("poller disabled")
+        return
+    assert feishu is not None
+    log.info("poller started, interval=%.0fs", POLL_INTERVAL_S)
+    while True:
+        try:
+            await asyncio.sleep(POLL_INTERVAL_S)
+            pending = await feishu.list_pending(F_STATUS, S_PENDING)
+            for item in pending:
+                record_id = item["record_id"]
+                if not record_id:
+                    continue
+                state = states.get(record_id)
+                if state and state.status in {"queued", "running", "done"}:
+                    continue
+                try:
+                    image_token = _extract_file_token(None, item["fields"])
+                except ValueError:
+                    continue
+                style = item["fields"].get(F_STYLE)
+                requirement = item["fields"].get(F_REQUIREMENT)
+                job = Job(
+                    job_id=str(uuid.uuid4()),
+                    record_id=record_id,
+                    requirement=requirement if isinstance(requirement, str) else "",
+                    style=style if isinstance(style, str) else "",
+                    image_token=image_token,
+                )
+                states[record_id] = JobState(status="queued", job_id=job.job_id)
+                await queue.put(job)
+                log.info("polled job %s record=%s", job.job_id, record_id)
+        except FeishuError as exc:
+            log.warning("poller feishu error: %s", exc)
+        except Exception:  # noqa: BLE001
+            log.exception("poller crashed, will retry")
+
+
 # ---------- 应用 ----------
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -220,12 +264,16 @@ async def lifespan(app: FastAPI):
         log.warning("缺少环境变量: %s", ", ".join(missing))
     comfy = ComfyEngine(COMFY_BASE_URL, COMFY_API_KEY, COMFY_USAGE_SOURCE)
     feishu = FeishuClient(FEISHU_APP_ID, FEISHU_APP_SECRET, FEISHU_APP_TOKEN, FEISHU_TABLE_ID)
-    task = asyncio.create_task(worker())
+    task_worker = asyncio.create_task(worker())
+    task_poller = asyncio.create_task(poller())
     log.info("service started")
     try:
         yield
     finally:
-        task.cancel()
+        task_worker.cancel()
+        task_poller.cancel()
+        await comfy.aclose()
+        await feishu.aclose()
         await comfy.aclose()
         await feishu.aclose()
 
