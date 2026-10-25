@@ -34,6 +34,9 @@ DEFAULT_ACTIVITY_NODE = "3761723474387808"
 DEFAULT_SCHEME_NODE = "2565934293372055"
 DEFAULT_PROMPT_NODE = "1705779279442278"
 DEFAULT_CARD_NODE = "2334937224229421"
+DEFAULT_VISUAL_NODE = "705857498768221"
+DEFAULT_FONT_NODE = "4105141153397020"
+DEFAULT_COPY_NODE = "3286967850890428"
 # 68 = 九宫格整图；59..67 = 按位置切好的九张（63/64 的编号与序号错位，
 # 63 是第 6 张、64 是第 5 张）；81 = 从九宫格挑出的一格放大图。
 FULL_IMAGE_NODES = ("68",)
@@ -94,12 +97,18 @@ def build_graph(
     template: StyleTemplate,
     seed: int,
     product_card: str = "",
+    visual_index: int = 0,
+    font_index: int = 0,
+    copy_text: str = "",
     *,
     image_node: str = DEFAULT_IMAGE_NODE,
     activity_node: str = DEFAULT_ACTIVITY_NODE,
     scheme_node: str = DEFAULT_SCHEME_NODE,
     prompt_node: str = DEFAULT_PROMPT_NODE,
     card_node: str = DEFAULT_CARD_NODE,
+    visual_node: str = DEFAULT_VISUAL_NODE,
+    font_node: str = DEFAULT_FONT_NODE,
+    copy_node: str = DEFAULT_COPY_NODE,
 ) -> dict[str, Any]:
     """复制基准工作流，并替换本次任务的动态输入。"""
     graph = copy.deepcopy(workflow)
@@ -107,6 +116,12 @@ def build_graph(
     _node_inputs(graph, image_node)["image"] = image_name
     _node_inputs(graph, activity_node)["select"] = template.activity_index
     _node_inputs(graph, scheme_node)["select"] = template.scheme_index
+    _node_inputs(graph, visual_node)["select"] = visual_index
+    _node_inputs(graph, font_node)["select"] = font_index
+
+    if copy_text.strip():
+        # 「卖点文案」控制画面上允许出现的广告文字，换产品时必须一起改。
+        _node_inputs(graph, copy_node)["value"] = copy_text.strip()
 
     if product_card.strip():
         # 飞书「产品卡片」非空时覆盖工作流内置卡片，避免换成别的产品后
@@ -145,6 +160,9 @@ class ComfyEngine:
         scheme_node: str = DEFAULT_SCHEME_NODE,
         prompt_node: str = DEFAULT_PROMPT_NODE,
         card_node: str = DEFAULT_CARD_NODE,
+        visual_node: str = DEFAULT_VISUAL_NODE,
+        font_node: str = DEFAULT_FONT_NODE,
+        copy_node: str = DEFAULT_COPY_NODE,
     ) -> None:
         self._base = base_url.rstrip("/")
         self._api_key = api_key
@@ -157,6 +175,9 @@ class ComfyEngine:
         self._scheme_node = scheme_node
         self._prompt_node = prompt_node
         self._card_node = card_node
+        self._visual_node = visual_node
+        self._font_node = font_node
+        self._copy_node = copy_node
         for node_id in [
             *self._output_nodes,
             image_node,
@@ -164,6 +185,9 @@ class ComfyEngine:
             scheme_node,
             prompt_node,
             card_node,
+            visual_node,
+            font_node,
+            copy_node,
         ]:
             _node_inputs(self._workflow, node_id)
         self._client = httpx.AsyncClient(
@@ -292,6 +316,9 @@ class ComfyEngine:
         template: StyleTemplate,
         seed: int,
         product_card: str = "",
+        visual_index: int = 0,
+        font_index: int = 0,
+        copy_text: str = "",
     ) -> ComfyResult:
         image_name = await self.upload_image(image_bytes, filename)
         graph = build_graph(
@@ -301,11 +328,17 @@ class ComfyEngine:
             template=template,
             seed=seed,
             product_card=product_card,
+            visual_index=visual_index,
+            font_index=font_index,
+            copy_text=copy_text,
             image_node=self._image_node,
             activity_node=self._activity_node,
             scheme_node=self._scheme_node,
             prompt_node=self._prompt_node,
             card_node=self._card_node,
+            visual_node=self._visual_node,
+            font_node=self._font_node,
+            copy_node=self._copy_node,
         )
         prompt_id = await self.submit(graph)
         log.info("submitted prompt_id=%s workflow=%s output_nodes=%s", prompt_id, self.workflow_name, ",".join(self._output_nodes))

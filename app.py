@@ -27,7 +27,7 @@ from pydantic import BaseModel
 
 from comfy_engine import ComfyEngine, ComfyImage
 from feishu_client import FeishuClient, FeishuError
-from prompts import build_prompt
+from prompts import build_prompt, resolve_font, resolve_visual
 
 load_dotenv()
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
@@ -51,6 +51,9 @@ WORKFLOW_ACTIVITY_NODE = os.getenv("WORKFLOW_ACTIVITY_NODE", "3761723474387808")
 WORKFLOW_SCHEME_NODE = os.getenv("WORKFLOW_SCHEME_NODE", "2565934293372055")
 WORKFLOW_PROMPT_NODE = os.getenv("WORKFLOW_PROMPT_NODE", "1705779279442278")
 WORKFLOW_CARD_NODE = os.getenv("WORKFLOW_CARD_NODE", "2334937224229421")
+WORKFLOW_VISUAL_NODE = os.getenv("WORKFLOW_VISUAL_NODE", "705857498768221")
+WORKFLOW_FONT_NODE = os.getenv("WORKFLOW_FONT_NODE", "4105141153397020")
+WORKFLOW_COPY_NODE = os.getenv("WORKFLOW_COPY_NODE", "3286967850890428")
 
 FEISHU_APP_ID = os.getenv("FEISHU_APP_ID", "")
 FEISHU_APP_SECRET = os.getenv("FEISHU_APP_SECRET", "")
@@ -64,6 +67,9 @@ F_REQUIREMENT = os.getenv("FIELD_REQUIREMENT", "需求描述")
 F_STYLE = os.getenv("FIELD_STYLE", "风格")
 F_SCHEME = os.getenv("FIELD_SCHEME", "方案")
 F_PRODUCT_CARD = os.getenv("FIELD_PRODUCT_CARD", "产品卡片")
+F_VISUAL = os.getenv("FIELD_VISUAL", "画面风格")
+F_FONT = os.getenv("FIELD_FONT", "字体风格")
+F_COPY = os.getenv("FIELD_COPY", "卖点文案")
 F_STATUS = os.getenv("FIELD_STATUS", "状态")
 F_RESULT = os.getenv("FIELD_RESULT", "结果图")
 F_TILES = os.getenv("FIELD_TILES", "九宫格切片")
@@ -101,6 +107,9 @@ class Job:
     style: str
     scheme: str
     product_card: str
+    visual: str
+    font: str
+    copy_text: str
     image_token: str
     creator_open_id: str | None = None
     created_at: float = field(default_factory=time.time)
@@ -120,6 +129,9 @@ class JobIn(BaseModel):
     style: str | None = None
     scheme: str | None = None
     product_card: str | None = None
+    visual: str | None = None
+    font: str | None = None
+    copy_text: str | None = None
     image_token: str | None = None
     record: dict[str, Any] | None = None
 
@@ -238,6 +250,9 @@ async def run_job(job: Job) -> None:
             prompt_text=prompt_text,
             template=template,
             product_card=job.product_card,
+            visual_index=resolve_visual(job.visual),
+            font_index=resolve_font(job.font),
+            copy_text=job.copy_text,
             seed=_job_seed(job.record_id),
         )
 
@@ -314,6 +329,9 @@ async def poller() -> None:
                     style=_field_text(fields.get(F_STYLE)),
                     scheme=_field_text(fields.get(F_SCHEME)),
                     product_card=_field_text(fields.get(F_PRODUCT_CARD)),
+                    visual=_field_text(fields.get(F_VISUAL)),
+                    font=_field_text(fields.get(F_FONT)),
+                    copy_text=_field_text(fields.get(F_COPY)),
                     image_token=image_token,
                     creator_open_id=_creator_open_id(fields),
                 )
@@ -353,6 +371,9 @@ async def lifespan(_app: FastAPI):
         activity_node=WORKFLOW_ACTIVITY_NODE,
         scheme_node=WORKFLOW_SCHEME_NODE,
         card_node=WORKFLOW_CARD_NODE,
+        visual_node=WORKFLOW_VISUAL_NODE,
+        font_node=WORKFLOW_FONT_NODE,
+        copy_node=WORKFLOW_COPY_NODE,
         prompt_node=WORKFLOW_PROMPT_NODE,
     )
     feishu = FeishuClient(FEISHU_APP_ID, FEISHU_APP_SECRET, FEISHU_APP_TOKEN, FEISHU_TABLE_ID)
@@ -418,6 +439,9 @@ async def create_job(payload: JobIn, authorization: str | None = Header(default=
     record_scheme = _field_text(record.get(F_SCHEME)) if record else ""
     record_requirement = _field_text(record.get(F_REQUIREMENT)) if record else ""
     record_card = _field_text(record.get(F_PRODUCT_CARD)) if record else ""
+    record_visual = _field_text(record.get(F_VISUAL)) if record else ""
+    record_font = _field_text(record.get(F_FONT)) if record else ""
+    record_copy = _field_text(record.get(F_COPY)) if record else ""
     try:
         image_token = _extract_file_token(payload.image_token, record)
     except ValueError as exc:
@@ -430,12 +454,24 @@ async def create_job(payload: JobIn, authorization: str | None = Header(default=
         style=payload.style or record_style,
         scheme=payload.scheme or record_scheme,
         product_card=payload.product_card or record_card,
+        visual=payload.visual or record_visual,
+        font=payload.font or record_font,
+        copy_text=payload.copy_text or record_copy,
         image_token=image_token,
         creator_open_id=_creator_open_id(record),
     )
     states[payload.record_id] = JobState(status="queued", job_id=job.job_id)
     await queue.put(job)
-    log.info("queued job %s record=%s style=%s scheme=%s", job.job_id, job.record_id, job.style or "(默认)", job.scheme or "(默认)")
+    log.info(
+        "queued job %s record=%s style=%s scheme=%s visual=%s font=%s copy=%s",
+        job.job_id,
+        job.record_id,
+        job.style or "(默认)",
+        job.scheme or "(默认)",
+        job.visual or "(默认)",
+        job.font or "(默认)",
+        "有" if job.copy_text else "(内置)",
+    )
     return JSONResponse(status_code=202, content={"job_id": job.job_id})
 
 

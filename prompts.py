@@ -48,6 +48,20 @@ STYLES: dict[str, StyleTemplate] = {
 SCHEMES: dict[str, int] = {
     "电商主图": 0,
     "TVC动态分镜": 1,
+    "卖点海报矩阵": 2,
+}
+
+# 节点 705857498768221：0 写实影棚（等同旧版效果）、1 几何品牌大片。
+VISUALS: dict[str, int] = {
+    "写实影棚": 0,
+    "几何品牌大片": 1,
+}
+
+# 节点 4105141153397020：0 品牌角标、1 活力气泡、2 书法质感。
+FONTS: dict[str, int] = {
+    "品牌角标": 0,
+    "活力气泡": 1,
+    "书法质感": 2,
 }
 
 # 兼容旧版飞书表中已经存在的三个选项。
@@ -59,6 +73,8 @@ _STYLE_ALIASES = {
 
 DEFAULT_STYLE = "夏日冰爽"
 DEFAULT_SCHEME = "TVC动态分镜"
+DEFAULT_VISUAL = "写实影棚"
+DEFAULT_FONT = "品牌角标"
 
 
 def build_prompt(
@@ -86,3 +102,13 @@ def build_prompt(
     else:
         prompt = "无额外创意要求，请严格遵守工作流中的固定规则。"
     return prompt, template
+
+
+def resolve_visual(name: str | None) -> int:
+    """画面风格 → 节点 705857498768221 的 select，空值走默认写实影棚。"""
+    return VISUALS.get((name or "").strip(), VISUALS[DEFAULT_VISUAL])
+
+
+def resolve_font(name: str | None) -> int:
+    """字体风格 → 节点 4105141153397020 的 select，空值走默认品牌角标。"""
+    return FONTS.get((name or "").strip(), FONTS[DEFAULT_FONT])
