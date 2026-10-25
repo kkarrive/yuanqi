@@ -1,18 +1,16 @@
-"""飞书 → Comfy Cloud 海报生成服务。
+"""飞书 → Comfy Cloud 九宫格海报生成服务。
 
 流程：
 飞书自动化「发送 HTTP 请求」→ POST /api/jobs（立刻 202）
-  → 后台单 worker：下载产品图 → 调 Comfy Cloud 出图 → 上传素材 → 回写记录 → 发消息
+  → 后台单 worker：下载产品图 → 调新版 Comfy Cloud 工作流 → 回写结果图
 
-设计取舍：
-- 内存队列 + 单 worker：Demo 足够，生产换 Redis + 多 worker。
-- 按 record_id 幂等：飞书自动化可能重试，重复请求只做一次。
-- 立刻返回：飞书 HTTP 节点有超时，出图要几十秒，必须异步。
+也可以启用轮询模式，由服务主动扫描「待处理」记录，不依赖飞书自动化。
 """
 
 from __future__ import annotations
 
 import asyncio
+import hashlib
 import json
 import logging
 import os
@@ -23,11 +21,11 @@ from dataclasses import dataclass, field
 from typing import Any
 
 from dotenv import load_dotenv
-from fastapi import FastAPI, Header, HTTPException, Request
+from fastapi import FastAPI, Header, HTTPException
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 
-from comfy_engine import ComfyEngine, ComfyError
+from comfy_engine import ComfyEngine
 from feishu_client import FeishuClient, FeishuError
 from prompts import build_prompt
 
@@ -39,6 +37,13 @@ log = logging.getLogger("poster")
 COMFY_BASE_URL = os.getenv("COMFY_BASE_URL", "https://cloud.comfy.org")
 COMFY_API_KEY = os.getenv("COMFY_API_KEY", "")
 COMFY_USAGE_SOURCE = os.getenv("COMFY_USAGE_SOURCE", "feishu-poster-demo")
+WORKFLOW_PATH = os.getenv("WORKFLOW_PATH", "yuanqi-poster-workflow.json")
+WORKFLOW_OUTPUT_NODE = os.getenv("WORKFLOW_OUTPUT_NODE", "81")
+WORKFLOW_IMAGE_NODE = os.getenv("WORKFLOW_IMAGE_NODE", "11")
+WORKFLOW_ACTIVITY_NODE = os.getenv("WORKFLOW_ACTIVITY_NODE", "3761723474387808")
+WORKFLOW_SCHEME_NODE = os.getenv("WORKFLOW_SCHEME_NODE", "2565934293372055")
+WORKFLOW_PROMPT_NODE = os.getenv("WORKFLOW_PROMPT_NODE", "1705779279442278")
+WORKFLOW_CARD_NODE = os.getenv("WORKFLOW_CARD_NODE", "2334937224229421")
 
 FEISHU_APP_ID = os.getenv("FEISHU_APP_ID", "")
 FEISHU_APP_SECRET = os.getenv("FEISHU_APP_SECRET", "")
@@ -50,6 +55,8 @@ API_TOKEN = os.getenv("API_TOKEN", "")
 F_PRODUCT = os.getenv("FIELD_PRODUCT_IMAGE", "产品图")
 F_REQUIREMENT = os.getenv("FIELD_REQUIREMENT", "需求描述")
 F_STYLE = os.getenv("FIELD_STYLE", "风格")
+F_SCHEME = os.getenv("FIELD_SCHEME", "方案")
+F_PRODUCT_CARD = os.getenv("FIELD_PRODUCT_CARD", "产品卡片")
 F_STATUS = os.getenv("FIELD_STATUS", "状态")
 F_RESULT = os.getenv("FIELD_RESULT", "结果图")
 F_ERROR = os.getenv("FIELD_ERROR", "错误信息")
@@ -60,10 +67,9 @@ S_DOING = os.getenv("STATUS_DOING", "生成中")
 S_DONE = os.getenv("STATUS_DONE", "已完成")
 S_FAILED = os.getenv("STATUS_FAILED", "失败")
 
-MAX_CANDIDATES = int(os.getenv("MAX_CANDIDATES", "1"))
 DEDUP_TTL_S = float(os.getenv("DEDUP_TTL_S", "3600"))
 
-# 轮询模式：不依赖飞书自动化，服务主动扫「待处理」记录
+# 轮询模式：不依赖飞书自动化，服务主动扫「待处理」记录。
 POLL_ENABLED = os.getenv("POLL_ENABLED", "true").lower() not in {"0", "false", "no"}
 POLL_INTERVAL_S = float(os.getenv("POLL_INTERVAL_S", "10"))
 
@@ -75,7 +81,10 @@ class Job:
     record_id: str
     requirement: str
     style: str
+    scheme: str
+    product_card: str
     image_token: str
+    creator_open_id: str | None = None
     created_at: float = field(default_factory=time.time)
 
 
@@ -84,12 +93,15 @@ class JobState:
     status: str = "queued"
     error: str = ""
     job_id: str = ""
+    updated_at: float = field(default_factory=time.time)
 
 
 class JobIn(BaseModel):
     record_id: str
     requirement: str | None = None
     style: str | None = None
+    scheme: str | None = None
+    product_card: str | None = None
     image_token: str | None = None
     record: dict[str, Any] | None = None
 
@@ -99,6 +111,18 @@ queue: asyncio.Queue[Job] = asyncio.Queue()
 states: dict[str, JobState] = {}
 comfy: ComfyEngine | None = None
 feishu: FeishuClient | None = None
+
+
+def _field_text(value: Any) -> str:
+    """把飞书文本、单选对象或用户传入值统一转成字符串。"""
+    if isinstance(value, str):
+        return value
+    if isinstance(value, dict):
+        for key in ("text", "name", "value"):
+            item = value.get(key)
+            if isinstance(item, str):
+                return item
+    return ""
 
 
 def _extract_file_token(raw: str | None, record: dict[str, Any] | None) -> str:
@@ -114,6 +138,8 @@ def _extract_file_token(raw: str | None, record: dict[str, Any] | None) -> str:
                     candidates.append(str(item["file_token"]))
         elif isinstance(value, str):
             candidates.append(value)
+        elif isinstance(value, dict) and value.get("file_token"):
+            candidates.append(str(value["file_token"]))
     for text in candidates:
         text = text.strip()
         if not text:
@@ -144,29 +170,45 @@ def _creator_open_id(record: dict[str, Any] | None) -> str | None:
     return None
 
 
+def _mark_state(state: JobState, status: str, error: str = "") -> None:
+    state.status = status
+    state.error = error
+    state.updated_at = time.time()
+
+
 def _prune_states() -> None:
     now = time.time()
-    for key in [k for k, v in states.items() if v.status in {"done", "failed"} and now - getattr(v, "ts", now) > DEDUP_TTL_S]:
+    expired = [
+        key
+        for key, value in states.items()
+        if value.status in {"done", "failed"} and now - value.updated_at > DEDUP_TTL_S
+    ]
+    for key in expired:
         states.pop(key, None)
+
+
+def _job_seed(record_id: str) -> int:
+    digest = hashlib.sha256(record_id.encode("utf-8")).digest()
+    return int.from_bytes(digest[:4], "big") % 2_147_483_647
 
 
 # ---------- worker ----------
 async def run_job(job: Job) -> None:
     assert feishu is not None and comfy is not None
-    state = states.setdefault(job.record_id, JobState())
+    state = states.setdefault(job.record_id, JobState(job_id=job.job_id))
     try:
-        state.status = "running"
+        _mark_state(state, "running")
         await feishu.update_record(job.record_id, {F_STATUS: S_DOING, F_ERROR: ""})
 
         image_bytes = await feishu.download_media(job.image_token)
-        prompt_text, template = build_prompt(job.style, job.requirement)
-
+        prompt_text, template = build_prompt(job.style, job.requirement, job.scheme)
         result = await comfy.generate(
             image_bytes=image_bytes,
             filename=f"{job.record_id}.jpg",
             prompt_text=prompt_text,
             template=template,
-            seed=abs(hash(job.record_id)) % 2_147_483_647,
+            product_card=job.product_card,
+            seed=_job_seed(job.record_id),
         )
 
         file_token = await feishu.upload_media(result.image_bytes, f"poster-{job.record_id}.png")
@@ -178,18 +220,20 @@ async def run_job(job: Job) -> None:
                 F_ERROR: "",
             },
         )
-        state.status = "done"
+        _mark_state(state, "done")
         log.info("job %s done in %.1fs (%sx%s)", job.job_id, result.elapsed_s, result.width, result.height)
 
-        open_id = _creator_open_id(None)
-        if open_id:
-            await feishu.send_text(open_id, f"你的海报已生成完成（{template.label}），请到多维表格查看。")
-    except (FeishuError, ComfyError, ValueError) as exc:
-        state.status = "failed"
-        state.error = str(exc)[:500]
-        log.error("job %s failed: %s", job.job_id, exc)
+        if job.creator_open_id:
+            try:
+                await feishu.send_text(job.creator_open_id, f"你的海报已生成完成（{template.label}），请到多维表格查看。")
+            except FeishuError as exc:
+                log.warning("job %s completed but notification failed: %s", job.job_id, exc)
+    except Exception as exc:  # noqa: BLE001 - 单任务失败必须回写并保留 worker
+        error = str(exc)[:500] or exc.__class__.__name__
+        _mark_state(state, "failed", error)
+        log.error("job %s failed: %s", job.job_id, error)
         try:
-            await feishu.update_record(job.record_id, {F_STATUS: S_FAILED, F_ERROR: state.error})
+            await feishu.update_record(job.record_id, {F_STATUS: S_FAILED, F_ERROR: error})
         except FeishuError:
             log.error("failed to write error back to record %s", job.record_id)
 
@@ -223,18 +267,20 @@ async def poller() -> None:
                 state = states.get(record_id)
                 if state and state.status in {"queued", "running", "done"}:
                     continue
+                fields = item["fields"]
                 try:
-                    image_token = _extract_file_token(None, item["fields"])
+                    image_token = _extract_file_token(None, fields)
                 except ValueError:
                     continue
-                style = item["fields"].get(F_STYLE)
-                requirement = item["fields"].get(F_REQUIREMENT)
                 job = Job(
                     job_id=str(uuid.uuid4()),
                     record_id=record_id,
-                    requirement=requirement if isinstance(requirement, str) else "",
-                    style=style if isinstance(style, str) else "",
+                    requirement=_field_text(fields.get(F_REQUIREMENT)),
+                    style=_field_text(fields.get(F_STYLE)),
+                    scheme=_field_text(fields.get(F_SCHEME)),
+                    product_card=_field_text(fields.get(F_PRODUCT_CARD)),
                     image_token=image_token,
+                    creator_open_id=_creator_open_id(fields),
                 )
                 states[record_id] = JobState(status="queued", job_id=job.job_id)
                 await queue.put(job)
@@ -247,7 +293,7 @@ async def poller() -> None:
 
 # ---------- 应用 ----------
 @asynccontextmanager
-async def lifespan(app: FastAPI):
+async def lifespan(_app: FastAPI):
     global comfy, feishu
     missing = [
         name
@@ -262,20 +308,32 @@ async def lifespan(app: FastAPI):
     ]
     if missing:
         log.warning("缺少环境变量: %s", ", ".join(missing))
-    comfy = ComfyEngine(COMFY_BASE_URL, COMFY_API_KEY, COMFY_USAGE_SOURCE)
+    comfy = ComfyEngine(
+        COMFY_BASE_URL,
+        COMFY_API_KEY,
+        COMFY_USAGE_SOURCE,
+        WORKFLOW_PATH,
+        output_node=WORKFLOW_OUTPUT_NODE,
+        image_node=WORKFLOW_IMAGE_NODE,
+        activity_node=WORKFLOW_ACTIVITY_NODE,
+        scheme_node=WORKFLOW_SCHEME_NODE,
+        card_node=WORKFLOW_CARD_NODE,
+        prompt_node=WORKFLOW_PROMPT_NODE,
+    )
     feishu = FeishuClient(FEISHU_APP_ID, FEISHU_APP_SECRET, FEISHU_APP_TOKEN, FEISHU_TABLE_ID)
     task_worker = asyncio.create_task(worker())
     task_poller = asyncio.create_task(poller())
-    log.info("service started")
+    log.info("service started workflow=%s output_node=%s", comfy.workflow_name, WORKFLOW_OUTPUT_NODE)
     try:
         yield
     finally:
-        task_worker.cancel()
-        task_poller.cancel()
+        for task in (task_worker, task_poller):
+            task.cancel()
+        await asyncio.gather(task_worker, task_poller, return_exceptions=True)
         await comfy.aclose()
         await feishu.aclose()
-        await comfy.aclose()
-        await feishu.aclose()
+        comfy = None
+        feishu = None
 
 
 app = FastAPI(title="Feishu Comfy Poster", lifespan=lifespan)
@@ -283,18 +341,23 @@ app = FastAPI(title="Feishu Comfy Poster", lifespan=lifespan)
 
 @app.get("/healthz")
 async def healthz() -> dict[str, Any]:
-    return {"ok": True, "queued": queue.qsize(), "jobs": len(states)}
+    return {
+        "ok": True,
+        "queued": queue.qsize(),
+        "jobs": len(states),
+        "workflow": comfy.workflow_name if comfy else WORKFLOW_PATH,
+        "output_node": WORKFLOW_OUTPUT_NODE,
+    }
 
 
 @app.post("/api/jobs")
-async def create_job(payload: JobIn, request: Request, authorization: str | None = Header(default=None)):
+async def create_job(payload: JobIn, authorization: str | None = Header(default=None)):
     if API_TOKEN:
         expected = f"Bearer {API_TOKEN}"
         if authorization != expected:
             raise HTTPException(status_code=401, detail="invalid token")
 
     _prune_states()
-
     existing = states.get(payload.record_id)
     if existing and existing.status in {"queued", "running", "done"}:
         return JSONResponse(status_code=202, content={"job_id": existing.job_id, "duplicate": True})
@@ -306,27 +369,28 @@ async def create_job(payload: JobIn, request: Request, authorization: str | None
         except FeishuError as exc:
             log.warning("读取记录失败，改用请求参数: %s", exc)
 
+    record_style = _field_text(record.get(F_STYLE)) if record else ""
+    record_scheme = _field_text(record.get(F_SCHEME)) if record else ""
+    record_requirement = _field_text(record.get(F_REQUIREMENT)) if record else ""
+    record_card = _field_text(record.get(F_PRODUCT_CARD)) if record else ""
     try:
         image_token = _extract_file_token(payload.image_token, record)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
-    style = payload.style
-    requirement = payload.requirement
-    if record:
-        style = style or (record.get(F_STYLE) if isinstance(record.get(F_STYLE), str) else None)
-        requirement = requirement or (record.get(F_REQUIREMENT) if isinstance(record.get(F_REQUIREMENT), str) else None)
-
     job = Job(
         job_id=str(uuid.uuid4()),
         record_id=payload.record_id,
-        requirement=requirement or "",
-        style=style or "",
+        requirement=payload.requirement or record_requirement,
+        style=payload.style or record_style,
+        scheme=payload.scheme or record_scheme,
+        product_card=payload.product_card or record_card,
         image_token=image_token,
+        creator_open_id=_creator_open_id(record),
     )
     states[payload.record_id] = JobState(status="queued", job_id=job.job_id)
     await queue.put(job)
-    log.info("queued job %s record=%s style=%s", job.job_id, job.record_id, job.style or "(默认)")
+    log.info("queued job %s record=%s style=%s scheme=%s", job.job_id, job.record_id, job.style or "(默认)", job.scheme or "(默认)")
     return JSONResponse(status_code=202, content={"job_id": job.job_id})
 
 

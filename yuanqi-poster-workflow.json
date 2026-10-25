@@ -1,0 +1,1057 @@
+{
+  "11": {
+    "inputs": {
+      "image": "cdbd26a99203fd3b45a0cddf258a6105340e5b91585d70f0cbb6548cb8e7b582.jpg"
+    },
+    "class_type": "LoadImage",
+    "_meta": {
+      "title": "① 上传产品图（清晰白底正面图）",
+      "cnr_id": "comfy-core",
+      "ver": "0.3.76"
+    }
+  },
+  "58": {
+    "inputs": {
+      "value": 0
+    },
+    "class_type": "PrimitiveInt",
+    "_meta": {
+      "title": "裁切边距（格子间有白边时调大）",
+      "cnr_id": "comfy-core",
+      "ver": "0.3.76"
+    }
+  },
+  "59": {
+    "inputs": {
+      "filename_prefix": "ComfyUI-image_1",
+      "images": [
+        "56:29",
+        0
+      ]
+    },
+    "class_type": "SaveImage",
+    "_meta": {
+      "title": "保存：第 1 张",
+      "cnr_id": "comfy-core",
+      "ver": "0.3.76"
+    }
+  },
+  "60": {
+    "inputs": {
+      "filename_prefix": "ComfyUI-image_2",
+      "images": [
+        "56:33",
+        0
+      ]
+    },
+    "class_type": "SaveImage",
+    "_meta": {
+      "title": "保存：第 2 张",
+      "cnr_id": "comfy-core",
+      "ver": "0.3.76"
+    }
+  },
+  "61": {
+    "inputs": {
+      "filename_prefix": "ComfyUI-image_3",
+      "images": [
+        "56:39",
+        0
+      ]
+    },
+    "class_type": "SaveImage",
+    "_meta": {
+      "title": "保存：第 3 张",
+      "cnr_id": "comfy-core",
+      "ver": "0.3.76"
+    }
+  },
+  "62": {
+    "inputs": {
+      "filename_prefix": "ComfyUI-image_4",
+      "images": [
+        "56:40",
+        0
+      ]
+    },
+    "class_type": "SaveImage",
+    "_meta": {
+      "title": "保存：第 4 张",
+      "cnr_id": "comfy-core",
+      "ver": "0.3.76"
+    }
+  },
+  "63": {
+    "inputs": {
+      "filename_prefix": "ComfyUI-image_6",
+      "images": [
+        "56:45",
+        0
+      ]
+    },
+    "class_type": "SaveImage",
+    "_meta": {
+      "title": "保存：第 6 张",
+      "cnr_id": "comfy-core",
+      "ver": "0.3.76"
+    }
+  },
+  "64": {
+    "inputs": {
+      "filename_prefix": "ComfyUI-image_5",
+      "images": [
+        "56:43",
+        0
+      ]
+    },
+    "class_type": "SaveImage",
+    "_meta": {
+      "title": "保存：第 5 张",
+      "cnr_id": "comfy-core",
+      "ver": "0.3.76"
+    }
+  },
+  "65": {
+    "inputs": {
+      "filename_prefix": "ComfyUI-image_7",
+      "images": [
+        "56:46",
+        0
+      ]
+    },
+    "class_type": "SaveImage",
+    "_meta": {
+      "title": "保存：第 7 张",
+      "cnr_id": "comfy-core",
+      "ver": "0.3.76"
+    }
+  },
+  "66": {
+    "inputs": {
+      "filename_prefix": "ComfyUI-image_8",
+      "images": [
+        "56:49",
+        0
+      ]
+    },
+    "class_type": "SaveImage",
+    "_meta": {
+      "title": "保存：第 8 张",
+      "cnr_id": "comfy-core",
+      "ver": "0.3.76"
+    }
+  },
+  "67": {
+    "inputs": {
+      "filename_prefix": "ComfyUI-image_9",
+      "images": [
+        "56:51",
+        0
+      ]
+    },
+    "class_type": "SaveImage",
+    "_meta": {
+      "title": "保存：第 9 张",
+      "cnr_id": "comfy-core",
+      "ver": "0.3.76"
+    }
+  },
+  "68": {
+    "inputs": {
+      "filename_prefix": "ComfyUI-image_stitched",
+      "images": [
+        "1925564000594463",
+        0
+      ]
+    },
+    "class_type": "SaveImage",
+    "_meta": {
+      "title": "保存：九宫格原图",
+      "cnr_id": "comfy-core",
+      "ver": "0.3.76"
+    }
+  },
+  "81": {
+    "inputs": {
+      "filename_prefix": "ComfyUI-image_upscaled",
+      "images": [
+        "3452359295301324",
+        0
+      ]
+    },
+    "class_type": "SaveImage",
+    "_meta": {
+      "title": "保存：4K 成品图",
+      "cnr_id": "comfy-core",
+      "ver": "0.3.76"
+    }
+  },
+  "91": {
+    "inputs": {
+      "value": 1
+    },
+    "class_type": "PrimitiveInt",
+    "_meta": {
+      "title": "⑥ 选择要放大的图（填 1-9）",
+      "cnr_id": "comfy-core",
+      "ver": "0.3.76"
+    }
+  },
+  "1705779279442278": {
+    "inputs": {
+      "value": "生成一张 3×3 九宫格的饮料商业广告大片，9 格里都只出现参考图中的这款产品。按下面的【产品卡片】【活动主题】【九宫格镜头】来拍。\n\n【产品还原（最重要）】\n- 每一格的产品都必须和参考图完全一致：瓶型、比例、瓶盖、标签颜色和排版、logo、所有文字都照参考图，不能重新设计、改颜色、改成英文、写错字或编造新文字。\n- 标签文字以参考图为准；看不清的小字宁可模糊，也不要乱写。\n- 开瓶、饮用等动作要符合包装类型（瓶装拧盖、罐装拉环、利乐包插吸管）。\n\n【广告大片质感】\n- 像一线饮料品牌的电商首页海报、户外广告主视觉和 TVC 广告定格画面：专业影棚灯光实拍后精修，干净、通透、锐利，有高级感。\n- 产品是绝对主角：在画面中占比大（约 1/3 到 1/2），对焦锐利，logo 清楚可见、不被遮挡（原料爆裂、液体微观这类特写格除外）。\n- 每一格只有一个视觉焦点，背景简洁，不堆砌道具。\n- 色彩浓郁、对比强烈：主题主色大面积铺在背景或环境里，让产品的白色和品牌色从画面中跳出来。\n- 冰爽感拉满：瓶身挂满大小不一的冷凝水珠和往下流的水痕，配真实的碎冰和冰块，瓶口或冰块周围有淡淡冷气。\n- 光线有方向和层次：用轮廓光勾出瓶身边缘，用硬光打出清晰的影子和高光，不要整体平光、灰蒙蒙。\n\n【避免 AI 感】\n- 材质真实：塑料瓶的反光、标签的哑光质感、冰块的透明和内部气泡、水果切面的纤维和汁水、水花的形态，都要符合真实物理。\n- 不要出现：塑料玩具感、蜡像般的皮肤、全图柔光发光、过度锐化的 HDR、对称摆满一圈的水果、无缘无故飘在空中的物体（水花、飞溅等动态定格除外）、变形或多出来的手指、乱码文字。\n- 人物只做配角：多用手部、侧脸、背影或虚化的半身，动作自然，皮肤有真实纹理，手指和关节正常。\n\n【输出】\n- 一整张无缝的 3×3 九宫格，格子之间没有白边、间隔或边框。\n- 除了产品包装上原有的文字，不加任何标语、价格、字幕、水印。"
+    },
+    "class_type": "PrimitiveStringMultiline",
+    "_meta": {
+      "title": "🔒 固定规则（一般不用改）"
+    }
+  },
+  "2334937224229421": {
+    "inputs": {
+      "value": "【产品卡片】\n品牌和品名：元气森林 外星人电解质水 青柠口味\n包装：500 毫升塑料瓶，黑色螺旋瓶盖；瓶身几乎整体被白色哑光标签包裹，只有瓶颈是透明的，从外面看不到里面的液体\n标签设计：上方是黑色水滴形外星人 logo；中间是黑色粗体中文“外星人电解质水”，下面是字距很宽的小号英文“ALIENERGY”；再下面是黑框小字“0糖 0卡”；中下部有一片青柠切片图案和绿色小字“青柠口味”；底部是几行黑色小字说明\n标签文字（照抄，不加别的字）：外星人电解质水 / ALIENERGY / 0糖 0卡 / 青柠口味\n液体：无色透明、略带青柠色（只有倒进杯子时才看得到）\n口味原料和道具：新鲜青柠（整颗和切片）、薄荷叶、冰块\n核心卖点：0糖0卡、补充电解质、运动后快速补水\n品牌色：白色、黑色、青柠绿"
+    },
+    "class_type": "PrimitiveStringMultiline",
+    "_meta": {
+      "title": "② 产品卡片（换产品只改这里）"
+    }
+  },
+  "3761723474387808": {
+    "inputs": {
+      "strings": "【活动主题】夏日冰爽。场景：烈日下的海边、泳池边、街边便利店冰柜。光线：正午强烈阳光，清晰硬朗的影子，水面波光粼粼。主色：高饱和的天空蓝和泳池蓝，搭配白色和青柠绿。道具和人物：大量碎冰、冰桶、泳池水花、墨镜、草帽，穿夏装的年轻人（只出现手部、侧脸或背影）。情绪：酷热中来一口冰爽，瞬间解暑。\n【活动主题】运动燃脂。场景：深色调的健身房、清晨的塑胶跑道、黄昏的街头篮球场。光线：强烈的侧光和轮廓光，逆光中能看到汗水和水雾。主色：深炭灰和黑色背景，青柠绿做强烈点缀，局部冷蓝光。道具和人物：哑铃、跳绳、篮球、跑鞋、毛巾，身材健美的运动员（侧脸、背影或手部特写），皮肤上有真实汗珠。情绪：力量、汗水，训练后大口补水的畅快。\n【活动主题】户外露营。场景：松林营地、湖边岩石、晨雾中的帐篷口。光线：金色夕阳穿过树林的光束，蓝调时刻的篝火暖光。主色：森林深绿、大地棕、琥珀暖色，青柠绿点缀。道具和人物：装满冰块的露营冰箱、帆布帐篷、搪瓷杯、登山靴，穿户外外套的朋友（手部或背影）。情绪：放松、自在、和朋友分享。\n【活动主题】节日礼赠。场景：温馨的客厅、节日聚餐的餐桌、挂着灯笼的夜市。光线：暖黄色灯光、串灯形成的光斑、烛光。主色：喜庆的正红和暖金色，搭配白色产品。道具和人物：系着丝带的礼盒、整箱产品礼包、节日零食、碰杯的手。情绪：热闹、温暖、团聚分享。\n【活动主题】办公提神。场景：阳光充足的现代办公室、联合办公咖啡区、能看到城市景观的落地窗工位。光线：清晨柔和的窗光和百叶窗投影，傍晚显示器的冷光。主色：浅木色、白色、绿植的绿色，青柠绿点缀。道具和人物：笔记本电脑、手写便签、耳机、绿植，穿商务休闲装的年轻职场人（手部或侧脸）。情绪：专注、清爽，下午来一瓶重新充电。",
+      "multiline": false,
+      "select": 2
+    },
+    "class_type": "ImpactStringSelector",
+    "_meta": {
+      "title": "③ 活动主题（select 填编号：0夏日 1健身 2露营 3节日礼赠 4办公提神）"
+    }
+  },
+  "2565934293372055": {
+    "inputs": {
+      "strings": "# 方案0：电商主图（产品清晰稳定，适合详情页、货架图）\n【九宫格镜头】每一格都是一张独立的广告照片，放在当前活动主题的场景和配色里。\n第1行第1格 主视觉：低角度仰拍，产品立在主题场景的台面上，占画面一半高度，硬光打出长影子和明亮高光，背景是虚化的主题主色，瓶身挂满冷凝水珠。\n第1行第2格 冰爽特写：产品斜插在堆满碎冰的冰桶里，瓶口飘出淡淡冷气，冷色逆光让冰块晶莹透亮，浅景深。\n第1行第3格 水花冲击：高速闪光定格，清水和冰块从产品后方向两侧炸开，水滴形态真实自然，背景是主题主色的纯色，产品正面清晰、没有遮挡。\n第2行第1格 开瓶瞬间：手部特写，手指拧开瓶盖，瓶口冒出一缕白色冷气，手上和瓶身都有水珠，背景是虚化的主题场景。\n第2行第2格 畅饮时刻：人物在主题场景中仰头喝产品的侧面，逆光勾出轮廓和汗珠，人物在画面一侧，产品标签朝向镜头、清楚可见。\n第2行第3格 原料特写：微距，产品旁边是刚切开的新鲜口味原料，汁水饱满、果肉纤维清晰，配几片薄荷叶和冰块，突出新鲜感。\n第3行第1格 补给瞬间：主题场景中，刚运动或忙完的人伸手去拿放在一旁的产品，前景产品清晰，背景人物和环境虚化，有故事感。\n第3行第2格 多瓶陈列：4 到 6 瓶产品整齐排在冰柜或冰块上，正面统一朝前，有货架冲击力，让人想直接囤一箱。\n第3行第3格 俯拍创意：顶视角，产品平放在主题主色的纯色背景上，周围有节奏地摆放主题道具、原料和冰块，留出大块干净的空白，构图有设计感但不完全对称。\n# 方案1：TVC 动感分镜（高速摄影、强冲击，适合主视觉海报和后续做短视频）\n【九宫格镜头】这是一条饮料 TVC 广告的 9 个关键帧分镜，每一格都是电影级商业广告的定格画面，放在当前活动主题的场景和配色里。产品外观一律以参考图和产品卡片为准，不要套用其他产品的瓶型、材质或颜色。括号里的运镜是给后续生成视频用的，在图片里用动态模糊、飞溅定格、冷气流动来表现速度感和冲击力。\n第1行第1格 开场冲击｜特写，高速摄影慢动作，平视偏低角度（运镜：慢动作上升）：晶莹剔透的冰块和新鲜的口味原料砸入水面，溅起巨大的皇冠状水花，阳光穿透水珠闪闪发亮；产品从水花和飞溅的水珠中缓缓升起，瓶身布满细密的冷凝水珠，标签正面朝向镜头。\n第1行第2格 英雄登场｜低角度仰拍（运镜：快速向前推进）：产品屹立在阳光充沛的主题场景前，显得高大有力量，瓶盖闪着冷冽的高光，瓶身水珠反光；前景有几片绿叶或主题道具虚化掠过，带一点推进的动态模糊。\n第1行第3格 原料爆裂｜超特写，环绕慢动作：一颗颗饱满的口味原料在空中与水滴碰撞、爆开，果汁和水珠呈放射状四散喷射，汁水晶莹透亮，极具冲击力和食欲感；产品在画面一侧虚化可见。\n第2行第1格 冰中落定｜近景俯拍（运镜：镜头下移）：2 到 3 瓶产品从上方落下，稳稳扎进铺满碎冰和新鲜切开的口味原料的冰床里，碎冰向四周飞溅，腾起阵阵白色冰雾。\n第2行第2格 液体微观｜微距（运镜：穿过液体向前推进）：透明玻璃杯中的产品液体（颜色以产品卡片为准），大量细密气泡和原料碎粒在液体中翻腾上升，光线穿透液体，清凉灵动。\n第2行第3格 开盖释放｜瓶口特写（运镜：从侧面快速上摇）：瓶盖在空中旋转着脱离瓶口（开启方式按包装类型），一股浓白冰凉的冷气从瓶口喷涌而出，缠绕在瓶颈周围，瓶身水珠滑落。\n第3行第1格 倾倒入杯｜特写（运镜：沿瓶身缓慢横移）：产品倾斜，液体顺畅地倒进装满冰块的透明玻璃杯，激起液体浪花和细腻气泡，冰块在杯中上下浮动；瓶身标签清晰可见。\n第3行第2格 畅饮满足｜近景（运镜：快速推向人物）：主题场景的阳光下，一位年轻人拿起挂满水珠的冰镇产品，仰头畅饮一大口，嘴角露出清爽满足的表情，阳光照亮脸上的水珠；产品标签朝向镜头。\n第3行第3格 品牌定格｜中特写（运镜：缓慢拉远后定格）：2 到 3 瓶产品稳稳立在冰爽发亮的台面上，旁边是切开的新鲜口味原料和晶莹冰块，背景是通透的主题主色渐变，瓶身水珠缓缓流下，产品正面和 logo 清晰醒目，作为广告的结尾画面。",
+      "multiline": true,
+      "select": 1
+    },
+    "class_type": "ImpactStringSelector",
+    "_meta": {
+      "title": "④ 九宫格镜头方案（select：0 电商主图 1 TVC动感分镜）"
+    }
+  },
+  "4158316327054491": {
+    "inputs": {
+      "string_a": [
+        "1705779279442278",
+        0
+      ],
+      "string_b": [
+        "2334937224229421",
+        0
+      ],
+      "delimiter": "\n\n"
+    },
+    "class_type": "StringConcatenate",
+    "_meta": {
+      "title": "拼接提示词 1"
+    }
+  },
+  "1637290631147434": {
+    "inputs": {
+      "string_a": [
+        "4158316327054491",
+        0
+      ],
+      "string_b": [
+        "3761723474387808",
+        0
+      ],
+      "delimiter": "\n\n"
+    },
+    "class_type": "StringConcatenate",
+    "_meta": {
+      "title": "拼接提示词 2"
+    }
+  },
+  "258859989274030": {
+    "inputs": {
+      "string_a": [
+        "1637290631147434",
+        0
+      ],
+      "string_b": [
+        "2565934293372055",
+        0
+      ],
+      "delimiter": "\n\n"
+    },
+    "class_type": "StringConcatenate",
+    "_meta": {
+      "title": "拼接提示词 3（送入九宫格）"
+    }
+  },
+  "1925564000594463": {
+    "inputs": {
+      "prompt": [
+        "258859989274030",
+        0
+      ],
+      "model": "gpt-image-2.5-sunburst",
+      "model.size": "2048x2048",
+      "model.custom_width": 1024,
+      "model.custom_height": 1024,
+      "model.background": "opaque",
+      "model.quality": "high",
+      "n": 1,
+      "seed": 54321,
+      "model.images.image_1": [
+        "11",
+        0
+      ]
+    },
+    "class_type": "OpenAIGPTImageNodeV2",
+    "_meta": {
+      "title": "⑤ 生成九宫格广告图（GPT Image 2.5）"
+    }
+  },
+  "56:32": {
+    "inputs": {
+      "images": [
+        "56:29",
+        0
+      ]
+    },
+    "class_type": "PreviewImage",
+    "_meta": {
+      "title": "预览图像",
+      "cnr_id": "comfy-core",
+      "ver": "0.3.76"
+    }
+  },
+  "56:34": {
+    "inputs": {
+      "images": [
+        "56:33",
+        0
+      ]
+    },
+    "class_type": "PreviewImage",
+    "_meta": {
+      "title": "预览图像",
+      "cnr_id": "comfy-core",
+      "ver": "0.3.76"
+    }
+  },
+  "56:41": {
+    "inputs": {
+      "images": [
+        "56:40",
+        0
+      ]
+    },
+    "class_type": "PreviewImage",
+    "_meta": {
+      "title": "预览图像",
+      "cnr_id": "comfy-core",
+      "ver": "0.3.76"
+    }
+  },
+  "56:42": {
+    "inputs": {
+      "images": [
+        "56:43",
+        0
+      ]
+    },
+    "class_type": "PreviewImage",
+    "_meta": {
+      "title": "预览图像",
+      "cnr_id": "comfy-core",
+      "ver": "0.3.76"
+    }
+  },
+  "56:44": {
+    "inputs": {
+      "images": [
+        "56:45",
+        0
+      ]
+    },
+    "class_type": "PreviewImage",
+    "_meta": {
+      "title": "预览图像",
+      "cnr_id": "comfy-core",
+      "ver": "0.3.76"
+    }
+  },
+  "56:47": {
+    "inputs": {
+      "images": [
+        "56:46",
+        0
+      ]
+    },
+    "class_type": "PreviewImage",
+    "_meta": {
+      "title": "预览图像",
+      "cnr_id": "comfy-core",
+      "ver": "0.3.76"
+    }
+  },
+  "56:48": {
+    "inputs": {
+      "images": [
+        "56:49",
+        0
+      ]
+    },
+    "class_type": "PreviewImage",
+    "_meta": {
+      "title": "预览图像",
+      "cnr_id": "comfy-core",
+      "ver": "0.3.76"
+    }
+  },
+  "56:50": {
+    "inputs": {
+      "images": [
+        "56:51",
+        0
+      ]
+    },
+    "class_type": "PreviewImage",
+    "_meta": {
+      "title": "预览图像",
+      "cnr_id": "comfy-core",
+      "ver": "0.3.76"
+    }
+  },
+  "56:38": {
+    "inputs": {
+      "images": [
+        "56:39",
+        0
+      ]
+    },
+    "class_type": "PreviewImage",
+    "_meta": {
+      "title": "预览图像",
+      "cnr_id": "comfy-core",
+      "ver": "0.3.76"
+    }
+  },
+  "56:29": {
+    "inputs": {
+      "width": [
+        "56:109",
+        0
+      ],
+      "height": [
+        "56:108",
+        0
+      ],
+      "x": [
+        "56:110",
+        0
+      ],
+      "y": [
+        "56:107",
+        0
+      ],
+      "image": [
+        "1925564000594463",
+        0
+      ]
+    },
+    "class_type": "ImageCrop",
+    "_meta": {
+      "title": "1",
+      "cnr_id": "comfy-core",
+      "ver": "0.3.26"
+    }
+  },
+  "56:33": {
+    "inputs": {
+      "width": [
+        "56:109",
+        0
+      ],
+      "height": [
+        "56:108",
+        0
+      ],
+      "x": [
+        "56:111",
+        0
+      ],
+      "y": [
+        "56:107",
+        0
+      ],
+      "image": [
+        "1925564000594463",
+        0
+      ]
+    },
+    "class_type": "ImageCrop",
+    "_meta": {
+      "title": "2",
+      "cnr_id": "comfy-core",
+      "ver": "0.3.26"
+    }
+  },
+  "56:39": {
+    "inputs": {
+      "width": [
+        "56:109",
+        0
+      ],
+      "height": [
+        "56:108",
+        0
+      ],
+      "x": [
+        "56:114",
+        0
+      ],
+      "y": [
+        "56:107",
+        0
+      ],
+      "image": [
+        "1925564000594463",
+        0
+      ]
+    },
+    "class_type": "ImageCrop",
+    "_meta": {
+      "title": "3",
+      "cnr_id": "comfy-core",
+      "ver": "0.3.26"
+    }
+  },
+  "56:40": {
+    "inputs": {
+      "width": [
+        "56:109",
+        0
+      ],
+      "height": [
+        "56:108",
+        0
+      ],
+      "x": [
+        "56:110",
+        0
+      ],
+      "y": [
+        "56:112",
+        0
+      ],
+      "image": [
+        "1925564000594463",
+        0
+      ]
+    },
+    "class_type": "ImageCrop",
+    "_meta": {
+      "title": "4",
+      "cnr_id": "comfy-core",
+      "ver": "0.3.26"
+    }
+  },
+  "56:43": {
+    "inputs": {
+      "width": [
+        "56:109",
+        0
+      ],
+      "height": [
+        "56:108",
+        0
+      ],
+      "x": [
+        "56:111",
+        0
+      ],
+      "y": [
+        "56:112",
+        0
+      ],
+      "image": [
+        "1925564000594463",
+        0
+      ]
+    },
+    "class_type": "ImageCrop",
+    "_meta": {
+      "title": "5",
+      "cnr_id": "comfy-core",
+      "ver": "0.3.26"
+    }
+  },
+  "56:45": {
+    "inputs": {
+      "width": [
+        "56:109",
+        0
+      ],
+      "height": [
+        "56:108",
+        0
+      ],
+      "x": [
+        "56:114",
+        0
+      ],
+      "y": [
+        "56:112",
+        0
+      ],
+      "image": [
+        "1925564000594463",
+        0
+      ]
+    },
+    "class_type": "ImageCrop",
+    "_meta": {
+      "title": "6",
+      "cnr_id": "comfy-core",
+      "ver": "0.3.26"
+    }
+  },
+  "56:46": {
+    "inputs": {
+      "width": [
+        "56:109",
+        0
+      ],
+      "height": [
+        "56:108",
+        0
+      ],
+      "x": [
+        "56:110",
+        0
+      ],
+      "y": [
+        "56:113",
+        0
+      ],
+      "image": [
+        "1925564000594463",
+        0
+      ]
+    },
+    "class_type": "ImageCrop",
+    "_meta": {
+      "title": "7",
+      "cnr_id": "comfy-core",
+      "ver": "0.3.26"
+    }
+  },
+  "56:49": {
+    "inputs": {
+      "width": [
+        "56:109",
+        0
+      ],
+      "height": [
+        "56:108",
+        0
+      ],
+      "x": [
+        "56:111",
+        0
+      ],
+      "y": [
+        "56:113",
+        0
+      ],
+      "image": [
+        "1925564000594463",
+        0
+      ]
+    },
+    "class_type": "ImageCrop",
+    "_meta": {
+      "title": "8",
+      "cnr_id": "comfy-core",
+      "ver": "0.3.26"
+    }
+  },
+  "56:51": {
+    "inputs": {
+      "width": [
+        "56:109",
+        0
+      ],
+      "height": [
+        "56:108",
+        0
+      ],
+      "x": [
+        "56:114",
+        0
+      ],
+      "y": [
+        "56:113",
+        0
+      ],
+      "image": [
+        "1925564000594463",
+        0
+      ]
+    },
+    "class_type": "ImageCrop",
+    "_meta": {
+      "title": "9",
+      "cnr_id": "comfy-core",
+      "ver": "0.3.26"
+    }
+  },
+  "56:57": {
+    "inputs": {
+      "images": [
+        "56:105",
+        0
+      ]
+    },
+    "class_type": "PreviewImage",
+    "_meta": {
+      "title": "预览图像",
+      "cnr_id": "comfy-core",
+      "ver": "0.3.76"
+    }
+  },
+  "56:105": {
+    "inputs": {
+      "inputcount": 9,
+      "Update inputs": null,
+      "image_1": [
+        "56:29",
+        0
+      ],
+      "image_2": [
+        "56:33",
+        0
+      ],
+      "image_3": [
+        "56:39",
+        0
+      ],
+      "image_4": [
+        "56:40",
+        0
+      ],
+      "image_5": [
+        "56:43",
+        0
+      ],
+      "image_6": [
+        "56:45",
+        0
+      ],
+      "image_7": [
+        "56:46",
+        0
+      ],
+      "image_8": [
+        "56:49",
+        0
+      ],
+      "image_9": [
+        "56:51",
+        0
+      ]
+    },
+    "class_type": "ImageBatchMulti",
+    "_meta": {
+      "title": "Image Batch Multi",
+      "cnr_id": "comfyui-kjnodes",
+      "ver": "c661baadd9683c0033cd2a6ad90157c6d099a6c2"
+    }
+  },
+  "56:18": {
+    "inputs": {
+      "image": [
+        "1925564000594463",
+        0
+      ]
+    },
+    "class_type": "GetImageSize",
+    "_meta": {
+      "title": "获取图像尺寸",
+      "cnr_id": "comfy-core",
+      "ver": "0.3.71"
+    }
+  },
+  "56:106": {
+    "inputs": {
+      "value": "a",
+      "a": [
+        "58",
+        0
+      ]
+    },
+    "class_type": "SimpleMath+",
+    "_meta": {
+      "title": "🔧 Simple Math",
+      "cnr_id": "comfyui_essentials",
+      "ver": "1.1.0"
+    }
+  },
+  "56:107": {
+    "inputs": {
+      "value": "(b/2)",
+      "b": [
+        "56:106",
+        0
+      ]
+    },
+    "class_type": "SimpleMath+",
+    "_meta": {
+      "title": "Row 1 - Y val",
+      "cnr_id": "comfyui_essentials",
+      "ver": "1.1.0"
+    }
+  },
+  "56:108": {
+    "inputs": {
+      "value": "(a-3*b) / 3",
+      "a": [
+        "56:18",
+        1
+      ],
+      "b": [
+        "56:106",
+        0
+      ]
+    },
+    "class_type": "SimpleMath+",
+    "_meta": {
+      "title": "HEIGHT",
+      "cnr_id": "comfyui_essentials",
+      "ver": "1.1.0"
+    }
+  },
+  "56:109": {
+    "inputs": {
+      "value": "(a-3*b) / 3",
+      "a": [
+        "56:18",
+        0
+      ],
+      "b": [
+        "56:106",
+        0
+      ]
+    },
+    "class_type": "SimpleMath+",
+    "_meta": {
+      "title": "WIDTH",
+      "cnr_id": "comfyui_essentials",
+      "ver": "1.1.0"
+    }
+  },
+  "56:110": {
+    "inputs": {
+      "value": "b/2",
+      "b": [
+        "56:106",
+        0
+      ]
+    },
+    "class_type": "SimpleMath+",
+    "_meta": {
+      "title": "Col 1 - X val",
+      "cnr_id": "comfyui_essentials",
+      "ver": "1.1.0"
+    }
+  },
+  "56:111": {
+    "inputs": {
+      "value": "(a+b) + (b/2)",
+      "a": [
+        "56:109",
+        0
+      ],
+      "b": [
+        "56:106",
+        0
+      ]
+    },
+    "class_type": "SimpleMath+",
+    "_meta": {
+      "title": "Col 2 - X val",
+      "cnr_id": "comfyui_essentials",
+      "ver": "1.1.0"
+    }
+  },
+  "56:112": {
+    "inputs": {
+      "value": "(a+b) + (b/2)",
+      "a": [
+        "56:108",
+        0
+      ],
+      "b": [
+        "56:106",
+        0
+      ]
+    },
+    "class_type": "SimpleMath+",
+    "_meta": {
+      "title": "Row 2 - Y val",
+      "cnr_id": "comfyui_essentials",
+      "ver": "1.1.0"
+    }
+  },
+  "56:113": {
+    "inputs": {
+      "value": "(2*a) + (3*b)",
+      "a": [
+        "56:108",
+        0
+      ],
+      "b": [
+        "56:106",
+        0
+      ]
+    },
+    "class_type": "SimpleMath+",
+    "_meta": {
+      "title": "Row 3 - Y val",
+      "cnr_id": "comfyui_essentials",
+      "ver": "1.1.0"
+    }
+  },
+  "56:114": {
+    "inputs": {
+      "value": "(2*a) + (b*3)",
+      "a": [
+        "56:109",
+        0
+      ],
+      "b": [
+        "56:106",
+        0
+      ]
+    },
+    "class_type": "SimpleMath+",
+    "_meta": {
+      "title": "Col 3 - X val",
+      "cnr_id": "comfyui_essentials",
+      "ver": "1.1.0"
+    }
+  },
+  "93:83": {
+    "inputs": {
+      "target_width": [
+        "93:86",
+        0
+      ],
+      "target_height": [
+        "93:86",
+        1
+      ],
+      "padding_color": "white",
+      "interpolation": "area",
+      "image": [
+        "11",
+        0
+      ]
+    },
+    "class_type": "ResizeAndPadImage",
+    "_meta": {
+      "title": "调整尺寸并填充图像",
+      "cnr_id": "comfy-core",
+      "ver": "0.3.76"
+    }
+  },
+  "93:86": {
+    "inputs": {
+      "image": [
+        "93:78",
+        0
+      ]
+    },
+    "class_type": "GetImageSize",
+    "_meta": {
+      "title": "获取图像尺寸",
+      "cnr_id": "comfy-core",
+      "ver": "0.3.76"
+    }
+  },
+  "93:87": {
+    "inputs": {
+      "image1": [
+        "93:78",
+        0
+      ],
+      "image2": [
+        "93:83",
+        0
+      ]
+    },
+    "class_type": "ImageBatch",
+    "_meta": {
+      "title": "组合图像批次",
+      "cnr_id": "comfy-core",
+      "ver": "0.3.76"
+    }
+  },
+  "93:78": {
+    "inputs": {
+      "batch_index": [
+        "93:89",
+        0
+      ],
+      "length": 1,
+      "image": [
+        "56:105",
+        0
+      ]
+    },
+    "class_type": "ImageFromBatch",
+    "_meta": {
+      "title": "从批次获取图像",
+      "cnr_id": "comfy-core",
+      "ver": "0.3.76"
+    }
+  },
+  "93:89": {
+    "inputs": {
+      "value": "a - 1",
+      "a": [
+        "91",
+        0
+      ]
+    },
+    "class_type": "SimpleMath+",
+    "_meta": {
+      "title": "Image # as index",
+      "cnr_id": "comfyui_essentials",
+      "ver": "1.1.0"
+    }
+  },
+  "3452359295301324": {
+    "inputs": {
+      "prompt": "把图 1 放大成高清大图，细节更锐利、自然。图 2 是产品参考：瓶型、颜色、logo 和标签上的所有文字必须和图 2 完全一致，图 1 里写错或模糊的标签文字按图 2 修正，不要编造新文字。不要改变图 1 的构图、背景、人物、光线和色彩。保留真实的水珠、冰块、材质和皮肤纹理，不要磨皮，不要过度平滑，不要变成 3D 渲染的感觉。",
+      "model": "gpt-image-2.5-sunburst",
+      "model.size": "2048x2048",
+      "model.custom_width": 1024,
+      "model.custom_height": 1024,
+      "model.background": "opaque",
+      "model.quality": "high",
+      "n": 1,
+      "seed": 54321,
+      "model.images.image_1": [
+        "93:87",
+        0
+      ]
+    },
+    "class_type": "OpenAIGPTImageNodeV2",
+    "_meta": {
+      "title": "⑦ 高清放大 2K（GPT Image 2.5）"
+    }
+  }
+}

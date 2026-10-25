@@ -1,18 +1,24 @@
-"""Comfy Cloud 引擎：上传参考图 → 提交工作流 → 轮询 → 取图。
+"""Comfy Cloud 引擎：上传参考图、提交新版九宫格工作流、轮询并取回成品图。
 
-关键点（都踩过）：
-1. Partner Node 的凭证必须放在 body 的 extra_data.api_key_comfy_org，
-   只加 X-API-Key 请求头会在执行时报 "Unauthorized: Please login first"。
-2. /api/view 返回 302 到预签名地址，必须跟随重定向，否则拿到 0 字节。
-3. /api/history 在 Cloud 已废弃，用 /api/jobs/{id} 或 /api/history_v2。
+Comfy Cloud 的 Partner Node 需要同时满足两点：
+1. 请求头带 ``X-API-Key``；
+2. 请求体的 ``extra_data.api_key_comfy_org`` 带同一个凭证。
+
+新版工作流保存在仓库内，由 ``WORKFLOW_PATH`` 指定。每次任务只复制并修改
+工作流副本，不会污染下一次任务使用的基准 JSON。
 """
 
 from __future__ import annotations
 
 import asyncio
+import copy
+import json
 import logging
+import mimetypes
 import time
 from dataclasses import dataclass
+from pathlib import Path
+from typing import Any
 
 import httpx
 
@@ -22,6 +28,12 @@ log = logging.getLogger(__name__)
 
 POLL_INTERVAL_S = 5.0
 JOB_TIMEOUT_S = 300.0
+DEFAULT_IMAGE_NODE = "11"
+DEFAULT_ACTIVITY_NODE = "3761723474387808"
+DEFAULT_SCHEME_NODE = "2565934293372055"
+DEFAULT_PROMPT_NODE = "1705779279442278"
+DEFAULT_CARD_NODE = "2334937224229421"
+DEFAULT_OUTPUT_NODE = "81"
 
 
 class ComfyError(RuntimeError):
@@ -37,38 +49,112 @@ class ComfyResult:
     elapsed_s: float
 
 
-def build_graph(image_name: str, prompt_text: str, template: StyleTemplate, seed: int) -> dict:
-    """构造 ComfyUI API 格式工作流：LoadImage → Nano Banana 2 → SaveImage。"""
-    return {
-        "1": {
-            "class_type": "LoadImage",
-            "inputs": {"image": image_name},
-        },
-        "2": {
-            "class_type": "GeminiNanoBanana2",
-            "inputs": {
-                "prompt": prompt_text,
-                "model": "Nano Banana 2 (Gemini 3.1 Flash Image)",
-                "seed": seed,
-                "aspect_ratio": template.aspect_ratio,
-                "resolution": template.resolution,
-                "response_modalities": "IMAGE",
-                "thinking_level": "MINIMAL",
-                "images": ["1", 0],
-            },
-        },
-        "3": {
-            "class_type": "SaveImage",
-            "inputs": {"images": ["2", 0], "filename_prefix": "poster"},
-        },
-    }
+def load_workflow(path: str) -> dict[str, Any]:
+    """读取并校验 ComfyUI API 格式的工作流 JSON。"""
+    workflow_path = Path(path)
+    if not workflow_path.is_absolute():
+        workflow_path = Path(__file__).resolve().parent / workflow_path
+    try:
+        with workflow_path.open("r", encoding="utf-8") as handle:
+            workflow = json.load(handle)
+    except FileNotFoundError as exc:
+        raise ComfyError(f"workflow file not found: {workflow_path}") from exc
+    except json.JSONDecodeError as exc:
+        raise ComfyError(f"workflow JSON invalid: {workflow_path}: {exc}") from exc
+    if not isinstance(workflow, dict) or not workflow:
+        raise ComfyError(f"workflow must be a non-empty object: {workflow_path}")
+    return workflow
+
+
+def _node_inputs(graph: dict[str, Any], node_id: str) -> dict[str, Any]:
+    node = graph.get(node_id)
+    if not isinstance(node, dict):
+        raise ComfyError(f"workflow node not found: {node_id}")
+    inputs = node.get("inputs")
+    if not isinstance(inputs, dict):
+        raise ComfyError(f"workflow node has no inputs: {node_id}")
+    return inputs
+
+
+def build_graph(
+    workflow: dict[str, Any],
+    image_name: str,
+    prompt_text: str,
+    template: StyleTemplate,
+    seed: int,
+    product_card: str = "",
+    *,
+    image_node: str = DEFAULT_IMAGE_NODE,
+    activity_node: str = DEFAULT_ACTIVITY_NODE,
+    scheme_node: str = DEFAULT_SCHEME_NODE,
+    prompt_node: str = DEFAULT_PROMPT_NODE,
+    card_node: str = DEFAULT_CARD_NODE,
+) -> dict[str, Any]:
+    """复制基准工作流，并替换本次任务的动态输入。"""
+    graph = copy.deepcopy(workflow)
+
+    _node_inputs(graph, image_node)["image"] = image_name
+    _node_inputs(graph, activity_node)["select"] = template.activity_index
+    _node_inputs(graph, scheme_node)["select"] = template.scheme_index
+
+    if product_card.strip():
+        # 飞书「产品卡片」非空时覆盖工作流内置卡片，避免换成别的产品后
+        # 仍然按内置卡片描述瓶型、标签和卖点。
+        _node_inputs(graph, card_node)["value"] = product_card.strip()
+
+    fixed_inputs = _node_inputs(graph, prompt_node)
+    fixed_prompt = fixed_inputs.get("value")
+    if not isinstance(fixed_prompt, str):
+        raise ComfyError(f"workflow prompt node has no string value: {prompt_node}")
+    if prompt_text.strip():
+        fixed_inputs["value"] = fixed_prompt.rstrip() + "\n\n" + prompt_text.strip()
+
+    # 新版工作流有两个 GPT Image 节点。统一替换 seed，保证同一记录重试时
+    # 使用相同的任务种子，同时避免继续使用 JSON 中的固定示例种子。
+    for node in graph.values():
+        if not isinstance(node, dict) or node.get("class_type") != "OpenAIGPTImageNodeV2":
+            continue
+        inputs = node.get("inputs")
+        if isinstance(inputs, dict) and isinstance(inputs.get("seed"), int):
+            inputs["seed"] = seed
+
+    return graph
 
 
 class ComfyEngine:
-    def __init__(self, base_url: str, api_key: str, usage_source: str) -> None:
+    def __init__(
+        self,
+        base_url: str,
+        api_key: str,
+        usage_source: str,
+        workflow_path: str,
+        output_node: str = DEFAULT_OUTPUT_NODE,
+        image_node: str = DEFAULT_IMAGE_NODE,
+        activity_node: str = DEFAULT_ACTIVITY_NODE,
+        scheme_node: str = DEFAULT_SCHEME_NODE,
+        prompt_node: str = DEFAULT_PROMPT_NODE,
+        card_node: str = DEFAULT_CARD_NODE,
+    ) -> None:
         self._base = base_url.rstrip("/")
         self._api_key = api_key
         self._usage_source = usage_source
+        self._workflow_path = workflow_path
+        self._workflow = load_workflow(workflow_path)
+        self._output_node = output_node
+        self._image_node = image_node
+        self._activity_node = activity_node
+        self._scheme_node = scheme_node
+        self._prompt_node = prompt_node
+        self._card_node = card_node
+        for node_id in (
+            output_node,
+            image_node,
+            activity_node,
+            scheme_node,
+            prompt_node,
+            card_node,
+        ):
+            _node_inputs(self._workflow, node_id)
         self._client = httpx.AsyncClient(
             base_url=self._base,
             headers={"X-API-Key": api_key},
@@ -76,18 +162,27 @@ class ComfyEngine:
             follow_redirects=True,
         )
 
+    @property
+    def workflow_name(self) -> str:
+        return Path(self._workflow_path).name
+
     async def aclose(self) -> None:
         await self._client.aclose()
 
     async def upload_image(self, data: bytes, filename: str) -> str:
-        files = {"image": (filename, data, "image/jpeg")}
+        content_type = mimetypes.guess_type(filename)[0] or "application/octet-stream"
+        files = {"image": (filename, data, content_type)}
         form = {"type": "input", "overwrite": "true"}
         resp = await self._client.post("/api/upload/image", files=files, data=form)
         if resp.status_code != 200:
             raise ComfyError(f"upload failed {resp.status_code}: {resp.text[:200]}")
-        return str(resp.json()["name"])
+        body = resp.json()
+        image_name = body.get("name")
+        if not image_name:
+            raise ComfyError(f"upload response has no name: {body}")
+        return str(image_name)
 
-    async def submit(self, graph: dict) -> str:
+    async def submit(self, graph: dict[str, Any]) -> str:
         payload = {
             "prompt": graph,
             "extra_data": {
@@ -114,36 +209,55 @@ class ComfyEngine:
                 log.warning("job poll %s -> %s", prompt_id, resp.status_code)
                 continue
             job = resp.json()
-            last_status = str(job.get("status", "unknown"))
+            last_status = str(job.get("status", "unknown")).lower()
             if last_status == "failed":
-                err = (job.get("execution_error") or {}).get("exception_message", "")
-                raise ComfyError(f"job failed: {err or 'unknown error'}")
+                error = job.get("execution_error")
+                if isinstance(error, dict):
+                    message = error.get("exception_message") or error.get("message") or ""
+                else:
+                    message = str(error or "")
+                raise ComfyError(f"job failed: {message or 'unknown error'}")
             if last_status != "completed":
                 continue
-            image = self._first_image(job)
-            data = await self._download(image["filename"])
+
+            image = self._image_for_node(job, self._output_node)
+            data = await self._download(image)
+            metadata = image.get("metadata")
+            if not isinstance(metadata, dict):
+                metadata = {}
+            width = image.get("width") or metadata.get("width") or 0
+            height = image.get("height") or metadata.get("height") or 0
             return ComfyResult(
                 image_bytes=data,
                 filename=str(image["filename"]),
-                width=int((image.get("metadata") or {}).get("width") or 0),
-                height=int((image.get("metadata") or {}).get("height") or 0),
+                width=int(width),
+                height=int(height),
                 elapsed_s=time.monotonic() - started,
             )
         raise ComfyError(f"timeout after {timeout_s}s, last status={last_status}")
 
-    @staticmethod
-    def _first_image(job: dict) -> dict:
-        outputs = job.get("outputs") or {}
-        for node_output in outputs.values():
-            for image in node_output.get("images") or []:
-                return dict(image)
-        raise ComfyError("job completed but no image in outputs")
+    def _image_for_node(self, job: dict[str, Any], node_id: str) -> dict[str, Any]:
+        outputs = job.get("outputs")
+        if not isinstance(outputs, dict):
+            raise ComfyError("job completed but outputs are missing")
+        node_output = outputs.get(node_id)
+        if not isinstance(node_output, dict):
+            raise ComfyError(f"job completed but output node {node_id} is missing")
+        images = node_output.get("images")
+        if not isinstance(images, list) or not images or not isinstance(images[0], dict):
+            raise ComfyError(f"job completed but output node {node_id} has no image")
+        image = dict(images[0])
+        if not image.get("filename"):
+            raise ComfyError(f"output node {node_id} image has no filename")
+        return image
 
-    async def _download(self, filename: str) -> bytes:
-        resp = await self._client.get(
-            "/api/view",
-            params={"filename": filename, "subfolder": "", "type": "output"},
-        )
+    async def _download(self, image: dict[str, Any]) -> bytes:
+        params = {
+            "filename": str(image["filename"]),
+            "subfolder": str(image.get("subfolder") or ""),
+            "type": str(image.get("type") or "output"),
+        }
+        resp = await self._client.get("/api/view", params=params)
         if resp.status_code != 200 or not resp.content:
             raise ComfyError(f"view failed {resp.status_code}, {len(resp.content)} bytes")
         return resp.content
@@ -155,9 +269,22 @@ class ComfyEngine:
         prompt_text: str,
         template: StyleTemplate,
         seed: int,
+        product_card: str = "",
     ) -> ComfyResult:
         image_name = await self.upload_image(image_bytes, filename)
-        graph = build_graph(image_name, prompt_text, template, seed)
+        graph = build_graph(
+            self._workflow,
+            image_name=image_name,
+            prompt_text=prompt_text,
+            template=template,
+            seed=seed,
+            product_card=product_card,
+            image_node=self._image_node,
+            activity_node=self._activity_node,
+            scheme_node=self._scheme_node,
+            prompt_node=self._prompt_node,
+            card_node=self._card_node,
+        )
         prompt_id = await self.submit(graph)
-        log.info("submitted prompt_id=%s", prompt_id)
+        log.info("submitted prompt_id=%s workflow=%s output_node=%s", prompt_id, self.workflow_name, self._output_node)
         return await self.wait(prompt_id)
