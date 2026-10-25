@@ -61,7 +61,7 @@ class ComfyImage:
 class ComfyResult:
     images: dict[str, ComfyImage]
     elapsed_s: float
-
+    prompt_id: str = ""
 
 def load_workflow(path: str) -> dict[str, Any]:
     """读取并校验 ComfyUI API 格式的工作流 JSON。"""
@@ -205,6 +205,52 @@ class ComfyEngine:
     def workflow_node_count(self) -> int:
         return len(self._workflow)
 
+    @property
+    def node_map(self) -> dict[str, str]:
+        """角色 → 节点 ID，供 dry-run 与排障展示。"""
+        return {
+            "product_image": self._image_node,
+            "activity": self._activity_node,
+            "scheme": self._scheme_node,
+            "fixed_rules": self._prompt_node,
+            "product_card": self._card_node,
+            "visual": self._visual_node,
+            "font": self._font_node,
+            "copy": self._copy_node,
+        }
+
+    def build_preview(
+        self,
+        image_name: str,
+        prompt_text: str,
+        template: StyleTemplate,
+        seed: int,
+        product_card: str = "",
+        visual_index: int = 0,
+        font_index: int = 0,
+        copy_text: str = "",
+    ) -> dict[str, Any]:
+        """只构造不提交，用于 dry-run 诊断实际会写入工作流的值。"""
+        return build_graph(
+            self._workflow,
+            image_name=image_name,
+            prompt_text=prompt_text,
+            template=template,
+            seed=seed,
+            product_card=product_card,
+            visual_index=visual_index,
+            font_index=font_index,
+            copy_text=copy_text,
+            image_node=self._image_node,
+            activity_node=self._activity_node,
+            scheme_node=self._scheme_node,
+            prompt_node=self._prompt_node,
+            card_node=self._card_node,
+            visual_node=self._visual_node,
+            font_node=self._font_node,
+            copy_node=self._copy_node,
+        )
+
     async def aclose(self) -> None:
         await self._client.aclose()
 
@@ -268,7 +314,7 @@ class ComfyEngine:
                 collected[node_id] = await self._fetch(node_output)
             if not collected:
                 raise ComfyError("job completed but none of the configured output nodes produced an image")
-            return ComfyResult(images=collected, elapsed_s=time.monotonic() - started)
+            return ComfyResult(images=collected, elapsed_s=time.monotonic() - started, prompt_id=prompt_id)
         raise ComfyError(f"timeout after {timeout_s}s, last status={last_status}")
 
     @staticmethod

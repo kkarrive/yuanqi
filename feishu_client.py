@@ -113,16 +113,32 @@ class FeishuClient:
             raise FeishuError(f"unexpected record shape: {body['data']['record']}")
         return dict(fields)
 
-    async def list_pending(self, status_field: str, status_value: str) -> list[dict]:
-        """查出所有状态等于 status_value 的记录，供轮询 worker 使用。"""
+    async def get_record_detail(self, record_id: str) -> dict:
+        """返回 fields 与 last_modified_time，用于结算窗口与提交前二次校验。"""
+        resp = await self._client.get(
+            f"/bitable/v1/apps/{self._app_token}/tables/{self._table_id}/records/{record_id}",
+            headers=await self._headers(),
+            params={"automatic_fields": "true"},
+        )
+        body = resp.json()
+        if body.get("code") != 0:
+            raise FeishuError(f"get record failed: {body}")
+        record = body["data"]["record"]
+        fields = record.get("fields")
+        if not isinstance(fields, dict):
+            raise FeishuError(f"unexpected record shape: {record}")
+        return {"fields": dict(fields), "last_modified_time": record.get("last_modified_time")}
+
+    async def search_records(self, field_name: str, value: str) -> list[dict]:
+        """按单选取值筛记录，供轮询 worker 使用。"""
         payload = {
             "filter": {
                 "conjunction": "and",
                 "conditions": [
                     {
-                        "field_name": status_field,
+                        "field_name": field_name,
                         "operator": "is",
-                        "value": [status_value],
+                        "value": [value],
                     }
                 ],
             },
