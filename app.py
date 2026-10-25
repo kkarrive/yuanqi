@@ -25,7 +25,7 @@ from fastapi import FastAPI, Header, HTTPException
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 
-from comfy_engine import ComfyEngine
+from comfy_engine import ComfyEngine, ComfyImage
 from feishu_client import FeishuClient, FeishuError
 from prompts import build_prompt
 
@@ -38,7 +38,14 @@ COMFY_BASE_URL = os.getenv("COMFY_BASE_URL", "https://cloud.comfy.org")
 COMFY_API_KEY = os.getenv("COMFY_API_KEY", "")
 COMFY_USAGE_SOURCE = os.getenv("COMFY_USAGE_SOURCE", "feishu-poster-demo")
 WORKFLOW_PATH = os.getenv("WORKFLOW_PATH", "yuanqi-poster-workflow.json")
-WORKFLOW_OUTPUT_NODE = os.getenv("WORKFLOW_OUTPUT_NODE", "81")
+WORKFLOW_OUTPUT_NODES = tuple(
+    node.strip()
+    for node in os.getenv(
+        "WORKFLOW_OUTPUT_NODES",
+        "68,59,60,61,62,64,63,65,66,67,81",
+    ).split(",")
+    if node.strip()
+)
 WORKFLOW_IMAGE_NODE = os.getenv("WORKFLOW_IMAGE_NODE", "11")
 WORKFLOW_ACTIVITY_NODE = os.getenv("WORKFLOW_ACTIVITY_NODE", "3761723474387808")
 WORKFLOW_SCHEME_NODE = os.getenv("WORKFLOW_SCHEME_NODE", "2565934293372055")
@@ -59,6 +66,8 @@ F_SCHEME = os.getenv("FIELD_SCHEME", "方案")
 F_PRODUCT_CARD = os.getenv("FIELD_PRODUCT_CARD", "产品卡片")
 F_STATUS = os.getenv("FIELD_STATUS", "状态")
 F_RESULT = os.getenv("FIELD_RESULT", "结果图")
+F_TILES = os.getenv("FIELD_TILES", "九宫格切片")
+F_UPSCALED = os.getenv("FIELD_UPSCALED", "放大图")
 F_ERROR = os.getenv("FIELD_ERROR", "错误信息")
 F_CREATOR = os.getenv("FIELD_CREATOR", "提交人")
 
@@ -66,6 +75,15 @@ S_PENDING = os.getenv("STATUS_PENDING", "待处理")
 S_DOING = os.getenv("STATUS_DOING", "生成中")
 S_DONE = os.getenv("STATUS_DONE", "已完成")
 S_FAILED = os.getenv("STATUS_FAILED", "失败")
+
+
+# 三类产出分别写回三个附件字段，顺序即飞书里的展示顺序。
+# 切片节点按位置排成 1..9：63 是第 6 张、64 是第 5 张。
+OUTPUT_LAYOUT: tuple[tuple[str, tuple[str, ...], str], ...] = (
+    (F_RESULT, ("68",), "九宫格整图"),
+    (F_TILES, ("59", "60", "61", "62", "64", "63", "65", "66", "67"), "九宫格"),
+    (F_UPSCALED, ("81",), "放大图"),
+)
 
 DEDUP_TTL_S = float(os.getenv("DEDUP_TTL_S", "3600"))
 
@@ -192,6 +210,18 @@ def _job_seed(record_id: str) -> int:
     return int.from_bytes(digest[:4], "big") % 2_147_483_647
 
 
+async def _upload_group(record_id: str, prefix: str, images: list[ComfyImage]) -> list[dict[str, str]]:
+    """上传一组图片，文件名带序号，便于在飞书附件里按序查看。"""
+    assert feishu is not None
+    attachments: list[dict[str, str]] = []
+    for index, image in enumerate(images, start=1):
+        suffix = "" if len(images) == 1 else f"-{index}"
+        filename = f"{prefix}{suffix}-{record_id}.png"
+        token = await feishu.upload_media(image.image_bytes, filename)
+        attachments.append({"file_token": token})
+    return attachments
+
+
 # ---------- worker ----------
 async def run_job(job: Job) -> None:
     assert feishu is not None and comfy is not None
@@ -211,17 +241,22 @@ async def run_job(job: Job) -> None:
             seed=_job_seed(job.record_id),
         )
 
-        file_token = await feishu.upload_media(result.image_bytes, f"poster-{job.record_id}.png")
-        await feishu.update_record(
-            job.record_id,
-            {
-                F_STATUS: S_DONE,
-                F_RESULT: [{"file_token": file_token}],
-                F_ERROR: "",
-            },
-        )
+        fields: dict[str, Any] = {F_STATUS: S_DONE, F_ERROR: ""}
+        summary: list[str] = []
+        for field_name, node_ids, prefix in OUTPUT_LAYOUT:
+            images = [result.images[node] for node in node_ids if node in result.images]
+            if not images:
+                log.warning("job %s: no image for field %s", job.job_id, field_name)
+                continue
+            fields[field_name] = await _upload_group(job.record_id, prefix, images)
+            summary.append(f"{field_name}={len(images)}")
+
+        if not summary:
+            raise ComfyError("job produced no image for any configured output field")
+
+        await feishu.update_record(job.record_id, fields)
         _mark_state(state, "done")
-        log.info("job %s done in %.1fs (%sx%s)", job.job_id, result.elapsed_s, result.width, result.height)
+        log.info("job %s done in %.1fs (%s)", job.job_id, result.elapsed_s, ", ".join(summary))
 
         if job.creator_open_id:
             try:
@@ -313,7 +348,7 @@ async def lifespan(_app: FastAPI):
         COMFY_API_KEY,
         COMFY_USAGE_SOURCE,
         WORKFLOW_PATH,
-        output_node=WORKFLOW_OUTPUT_NODE,
+        output_nodes=WORKFLOW_OUTPUT_NODES,
         image_node=WORKFLOW_IMAGE_NODE,
         activity_node=WORKFLOW_ACTIVITY_NODE,
         scheme_node=WORKFLOW_SCHEME_NODE,
@@ -323,7 +358,12 @@ async def lifespan(_app: FastAPI):
     feishu = FeishuClient(FEISHU_APP_ID, FEISHU_APP_SECRET, FEISHU_APP_TOKEN, FEISHU_TABLE_ID)
     task_worker = asyncio.create_task(worker())
     task_poller = asyncio.create_task(poller())
-    log.info("service started workflow=%s output_node=%s", comfy.workflow_name, WORKFLOW_OUTPUT_NODE)
+    log.info(
+        "service started workflow=%s output_nodes=%s fields=%s",
+        comfy.workflow_name,
+        ",".join(WORKFLOW_OUTPUT_NODES),
+        "/".join(field for field, _, _ in OUTPUT_LAYOUT),
+    )
     try:
         yield
     finally:
@@ -346,7 +386,12 @@ async def healthz() -> dict[str, Any]:
         "queued": queue.qsize(),
         "jobs": len(states),
         "workflow": comfy.workflow_name if comfy else WORKFLOW_PATH,
-        "output_node": WORKFLOW_OUTPUT_NODE,
+        "output_nodes": list(WORKFLOW_OUTPUT_NODES),
+        "fields": {
+            "整图": F_RESULT,
+            "切片": F_TILES,
+            "放大图": F_UPSCALED,
+        },
     }
 
 

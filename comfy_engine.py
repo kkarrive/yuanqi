@@ -16,6 +16,7 @@ import json
 import logging
 import mimetypes
 import time
+from collections.abc import Sequence
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -33,7 +34,12 @@ DEFAULT_ACTIVITY_NODE = "3761723474387808"
 DEFAULT_SCHEME_NODE = "2565934293372055"
 DEFAULT_PROMPT_NODE = "1705779279442278"
 DEFAULT_CARD_NODE = "2334937224229421"
-DEFAULT_OUTPUT_NODE = "81"
+# 68 = 九宫格整图；59..67 = 按位置切好的九张（63/64 的编号与序号错位，
+# 63 是第 6 张、64 是第 5 张）；81 = 从九宫格挑出的一格放大图。
+FULL_IMAGE_NODES = ("68",)
+TILE_NODES = ("59", "60", "61", "62", "64", "63", "65", "66", "67")
+UPSCALED_NODES = ("81",)
+DEFAULT_OUTPUT_NODES = (*FULL_IMAGE_NODES, *TILE_NODES, *UPSCALED_NODES)
 
 
 class ComfyError(RuntimeError):
@@ -41,11 +47,16 @@ class ComfyError(RuntimeError):
 
 
 @dataclass(frozen=True)
-class ComfyResult:
+class ComfyImage:
     image_bytes: bytes
     filename: str
     width: int
     height: int
+
+
+@dataclass(frozen=True)
+class ComfyResult:
+    images: dict[str, ComfyImage]
     elapsed_s: float
 
 
@@ -128,7 +139,7 @@ class ComfyEngine:
         api_key: str,
         usage_source: str,
         workflow_path: str,
-        output_node: str = DEFAULT_OUTPUT_NODE,
+        output_nodes: Sequence[str] = DEFAULT_OUTPUT_NODES,
         image_node: str = DEFAULT_IMAGE_NODE,
         activity_node: str = DEFAULT_ACTIVITY_NODE,
         scheme_node: str = DEFAULT_SCHEME_NODE,
@@ -140,20 +151,20 @@ class ComfyEngine:
         self._usage_source = usage_source
         self._workflow_path = workflow_path
         self._workflow = load_workflow(workflow_path)
-        self._output_node = output_node
+        self._output_nodes = list(output_nodes)
         self._image_node = image_node
         self._activity_node = activity_node
         self._scheme_node = scheme_node
         self._prompt_node = prompt_node
         self._card_node = card_node
-        for node_id in (
-            output_node,
+        for node_id in [
+            *self._output_nodes,
             image_node,
             activity_node,
             scheme_node,
             prompt_node,
             card_node,
-        ):
+        ]:
             _node_inputs(self._workflow, node_id)
         self._client = httpx.AsyncClient(
             base_url=self._base,
@@ -220,36 +231,47 @@ class ComfyEngine:
             if last_status != "completed":
                 continue
 
-            image = self._image_for_node(job, self._output_node)
-            data = await self._download(image)
-            metadata = image.get("metadata")
-            if not isinstance(metadata, dict):
-                metadata = {}
-            width = image.get("width") or metadata.get("width") or 0
-            height = image.get("height") or metadata.get("height") or 0
-            return ComfyResult(
-                image_bytes=data,
-                filename=str(image["filename"]),
-                width=int(width),
-                height=int(height),
-                elapsed_s=time.monotonic() - started,
-            )
+            collected: dict[str, ComfyImage] = {}
+            for node_id in self._output_nodes:
+                node_output = self._outputs_of(job, node_id)
+                if node_output is None:
+                    log.warning("job %s has no output for node %s", prompt_id, node_id)
+                    continue
+                collected[node_id] = await self._fetch(node_output)
+            if not collected:
+                raise ComfyError("job completed but none of the configured output nodes produced an image")
+            return ComfyResult(images=collected, elapsed_s=time.monotonic() - started)
         raise ComfyError(f"timeout after {timeout_s}s, last status={last_status}")
 
-    def _image_for_node(self, job: dict[str, Any], node_id: str) -> dict[str, Any]:
+    @staticmethod
+    def _outputs_of(job: dict[str, Any], node_id: str) -> dict[str, Any] | None:
         outputs = job.get("outputs")
         if not isinstance(outputs, dict):
-            raise ComfyError("job completed but outputs are missing")
+            return None
         node_output = outputs.get(node_id)
         if not isinstance(node_output, dict):
-            raise ComfyError(f"job completed but output node {node_id} is missing")
+            return None
         images = node_output.get("images")
         if not isinstance(images, list) or not images or not isinstance(images[0], dict):
-            raise ComfyError(f"job completed but output node {node_id} has no image")
+            return None
         image = dict(images[0])
         if not image.get("filename"):
-            raise ComfyError(f"output node {node_id} image has no filename")
+            return None
         return image
+
+    async def _fetch(self, image: dict[str, Any]) -> ComfyImage:
+        data = await self._download(image)
+        metadata = image.get("metadata")
+        if not isinstance(metadata, dict):
+            metadata = {}
+        width = image.get("width") or metadata.get("width") or 0
+        height = image.get("height") or metadata.get("height") or 0
+        return ComfyImage(
+            image_bytes=data,
+            filename=str(image["filename"]),
+            width=int(width),
+            height=int(height),
+        )
 
     async def _download(self, image: dict[str, Any]) -> bytes:
         params = {
@@ -286,5 +308,5 @@ class ComfyEngine:
             card_node=self._card_node,
         )
         prompt_id = await self.submit(graph)
-        log.info("submitted prompt_id=%s workflow=%s output_node=%s", prompt_id, self.workflow_name, self._output_node)
+        log.info("submitted prompt_id=%s workflow=%s output_nodes=%s", prompt_id, self.workflow_name, ",".join(self._output_nodes))
         return await self.wait(prompt_id)
