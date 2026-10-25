@@ -201,6 +201,10 @@ class ComfyEngine:
     def workflow_name(self) -> str:
         return Path(self._workflow_path).name
 
+    @property
+    def workflow_node_count(self) -> int:
+        return len(self._workflow)
+
     async def aclose(self) -> None:
         await self._client.aclose()
 

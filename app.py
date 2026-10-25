@@ -407,11 +407,15 @@ async def healthz() -> dict[str, Any]:
         "queued": queue.qsize(),
         "jobs": len(states),
         "workflow": comfy.workflow_name if comfy else WORKFLOW_PATH,
+        "workflow_nodes": comfy.workflow_node_count if comfy else 0,
         "output_nodes": list(WORKFLOW_OUTPUT_NODES),
         "fields": {
             "整图": F_RESULT,
             "切片": F_TILES,
             "放大图": F_UPSCALED,
+            "画面风格": F_VISUAL,
+            "字体风格": F_FONT,
+            "卖点文案": F_COPY,
         },
     }
 
