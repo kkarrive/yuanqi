@@ -21,13 +21,14 @@ from dataclasses import dataclass, field
 from typing import Any
 
 from dotenv import load_dotenv
-from fastapi import FastAPI, Header, HTTPException
-from fastapi.responses import JSONResponse
+from fastapi import FastAPI, File, Form, Header, HTTPException, Request, UploadFile
+from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, RedirectResponse
 from pydantic import BaseModel
 
 from comfy_engine import ComfyEngine, ComfyImage
 from feishu_client import FeishuClient, FeishuError
 from prompts import build_prompt, resolve_font, resolve_visual
+import web_ui
 
 load_dotenv()
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
@@ -469,6 +470,7 @@ async def lifespan(_app: FastAPI):
     )
     feishu = FeishuClient(FEISHU_APP_ID, FEISHU_APP_SECRET, FEISHU_APP_TOKEN, FEISHU_TABLE_ID)
     task_worker = asyncio.create_task(worker())
+    task_web = asyncio.create_task(web_ui.worker(lambda: comfy))
     task_poller = asyncio.create_task(poller())
     log.info(
         "service started workflow=%s output_nodes=%s fields=%s",
@@ -479,11 +481,16 @@ async def lifespan(_app: FastAPI):
     try:
         yield
     finally:
-        for task in (task_worker, task_poller):
+        for task in (task_worker, task_poller, task_web):
             task.cancel()
-        await asyncio.gather(task_worker, task_poller, return_exceptions=True)
-        await comfy.aclose()
-        await feishu.aclose()
+        await asyncio.gather(task_worker, task_poller, task_web, return_exceptions=True)
+        for client in (comfy, feishu):
+            if client is None:
+                continue
+            try:
+                await client.aclose()
+            except Exception:  # noqa: BLE001 - 关闭失败不应影响退出
+                log.warning("close %s failed", type(client).__name__, exc_info=True)
         comfy = None
         feishu = None
 
@@ -514,6 +521,11 @@ async def healthz() -> dict[str, Any]:
             "done": V_SUBMIT_DONE,
             "settle_seconds": SETTLE_SECONDS,
             "params_field": F_PARAMS,
+        },
+        "web_jobs": {
+            "total": len(web_ui.jobs),
+            "queued": web_ui.queue.qsize(),
+            "user": web_ui.WEB_USER,
         },
     }
 
@@ -657,3 +669,121 @@ async def preview_job(payload: PreviewIn, authorization: str | None = Header(def
             nodes["font"]: {"input": "select", "value": clipped(nodes["font"], "select")},
         },
     }
+
+
+# ---------- 网页端 ----------
+def _web_user(request: Request) -> str | None:
+    return web_ui.read_session(request.cookies.get(web_ui.COOKIE_NAME))
+
+
+@app.get("/", response_class=HTMLResponse)
+async def web_home(request: Request):
+    user = _web_user(request)
+    if not user:
+        return RedirectResponse("/login", status_code=303)
+    return HTMLResponse(web_ui.app_page(user))
+
+
+@app.get("/login", response_class=HTMLResponse)
+async def web_login_page(request: Request):
+    if _web_user(request):
+        return RedirectResponse("/", status_code=303)
+    return HTMLResponse(web_ui.login_page())
+
+
+@app.post("/login")
+async def web_login(
+    username: str = Form(default=""),
+    password: str = Form(default=""),
+):
+    if not web_ui.check_credentials(username, password):
+        log.warning("web login failed for %r", username)
+        return HTMLResponse(web_ui.login_page("账号或密码不正确"), status_code=401)
+    response = RedirectResponse("/", status_code=303)
+    response.set_cookie(
+        web_ui.COOKIE_NAME,
+        web_ui.issue_session(web_ui.WEB_USER),
+        max_age=int(web_ui.SESSION_TTL_S),
+        httponly=True,
+        samesite="lax",
+    )
+    log.info("web login ok: %s", web_ui.WEB_USER)
+    return response
+
+
+@app.get("/logout")
+async def web_logout():
+    response = RedirectResponse("/login", status_code=303)
+    response.delete_cookie(web_ui.COOKIE_NAME)
+    return response
+
+
+@app.post("/api/web/jobs")
+async def web_create_job(
+    request: Request,
+    image: UploadFile = File(...),
+    style: str = Form(default=""),
+    scheme: str = Form(default=""),
+    visual: str = Form(default=""),
+    font: str = Form(default=""),
+    requirement: str = Form(default=""),
+    product_card: str = Form(default=""),
+    copy_text: str = Form(default=""),
+):
+    if not _web_user(request):
+        raise HTTPException(status_code=401, detail="请先登录")
+    if comfy is None:
+        raise HTTPException(status_code=503, detail="服务未就绪")
+
+    data = await image.read()
+    if not data:
+        raise HTTPException(status_code=400, detail="图片为空")
+    if len(data) > web_ui.MAX_UPLOAD_BYTES:
+        limit_mb = web_ui.MAX_UPLOAD_BYTES // (1024 * 1024)
+        raise HTTPException(status_code=413, detail=f"图片超过 {limit_mb} MB")
+
+    job = web_ui.create_job(
+        requirement=requirement.strip(),
+        style=style.strip(),
+        scheme=scheme.strip(),
+        visual=visual.strip(),
+        font=font.strip(),
+        product_card=product_card.strip(),
+        copy_text=copy_text.strip(),
+        image_name=image.filename or "upload.jpg",
+        image_bytes=data,
+    )
+    await web_ui.queue.put(job)
+    log.info(
+        "web job %s queued style=%s scheme=%s visual=%s font=%s card=%s copy=%s",
+        job.job_id,
+        job.style or "(默认)",
+        job.scheme or "(默认)",
+        job.visual or "(默认)",
+        job.font or "(默认)",
+        "有" if job.product_card else "内置",
+        "有" if job.copy_text else "内置",
+    )
+    return JSONResponse(status_code=202, content={"job_id": job.job_id})
+
+
+@app.get("/api/web/jobs/{job_id}")
+async def web_job_status(job_id: str, request: Request) -> dict[str, Any]:
+    if not _web_user(request):
+        raise HTTPException(status_code=401, detail="请先登录")
+    job = web_ui.jobs.get(job_id)
+    if job is None:
+        raise HTTPException(status_code=404, detail="unknown job")
+    return web_ui.snapshot(job)
+
+
+@app.get("/api/web/jobs/{job_id}/img/{name}")
+async def web_job_image(job_id: str, name: str, request: Request):
+    if not _web_user(request):
+        raise HTTPException(status_code=401, detail="请先登录")
+    if "/" in name or "\\" in name or name.startswith("."):
+        raise HTTPException(status_code=400, detail="bad name")
+    path = web_ui.data_dir() / job_id / name
+    if not path.is_file():
+        raise HTTPException(status_code=404, detail="not found")
+    return FileResponse(path, media_type="image/png")

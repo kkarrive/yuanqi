@@ -10,6 +10,10 @@ RUN pip install --no-cache-dir -i https://pypi.tuna.tsinghua.edu.cn/simple -r re
 
 COPY . .
 
+# 网页端结果图落盘目录（可用卷覆盖）
+RUN mkdir -p /data/web
+ENV WEB_DATA_DIR=/data/web
+
 EXPOSE 8000
 
 CMD ["uvicorn", "app:app", "--host", "0.0.0.0", "--port", "8000"]
